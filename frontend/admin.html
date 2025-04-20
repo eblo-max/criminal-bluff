@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Криминальный Блеф | Админ-панель</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/styles/admin.css">
+</head>
+<body>
+  <div class="admin-app">
+    <!-- Боковое меню -->
+    <aside class="sidebar">
+      <div class="logo">
+        <img src="src/assets/logo.svg" alt="Криминальный Блеф" class="logo-img">
+        <h2 class="logo-text">Админ-панель</h2>
+      </div>
+      <nav class="main-nav">
+        <ul>
+          <li>
+            <a href="#dashboard" class="nav-link active" data-section="dashboard">
+              <span class="nav-icon">📊</span>
+              <span class="nav-text">Дашборд</span>
+            </a>
+          </li>
+          <li>
+            <a href="#stories" class="nav-link" data-section="stories">
+              <span class="nav-icon">📝</span>
+              <span class="nav-text">Истории</span>
+            </a>
+          </li>
+          <li>
+            <a href="#users" class="nav-link" data-section="users">
+              <span class="nav-icon">👥</span>
+              <span class="nav-text">Пользователи</span>
+            </a>
+          </li>
+          <li>
+            <a href="#stats" class="nav-link" data-section="stats">
+              <span class="nav-icon">📈</span>
+              <span class="nav-text">Статистика</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+      <div class="user-info">
+        <div class="user-avatar">
+          <img src="src/assets/default-avatar.svg" alt="Admin" id="admin-avatar">
+        </div>
+        <div class="user-data">
+          <div class="user-name" id="admin-name">Администратор</div>
+          <div class="user-role">Администратор</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Основной контент -->
+    <main class="main-content">
+      <header class="content-header">
+        <h1 id="content-title">Дашборд</h1>
+        <div class="header-actions">
+          <div class="search-box">
+            <input type="text" placeholder="Поиск..." id="search-input">
+            <button id="search-btn">🔍</button>
+          </div>
+          <button class="btn btn-primary" id="action-btn">Действие</button>
+        </div>
+      </header>
+
+      <!-- Секции контента -->
+      <div class="content-sections">
+        <!-- Дашборд -->
+        <section class="content-section active" id="dashboard-section">
+          <div class="stats-cards">
+            <div class="stats-card">
+              <div class="stats-value" id="total-users">0</div>
+              <div class="stats-label">Пользователей</div>
+            </div>
+            <div class="stats-card">
+              <div class="stats-value" id="total-games">0</div>
+              <div class="stats-label">Игр сыграно</div>
+            </div>
+            <div class="stats-card">
+              <div class="stats-value" id="total-stories">0</div>
+              <div class="stats-label">Историй</div>
+            </div>
+            <div class="stats-card">
+              <div class="stats-value" id="new-users">0</div>
+              <div class="stats-label">Новых за 7 дней</div>
+            </div>
+          </div>
+
+          <div class="recent-data">
+            <div class="recent-section">
+              <h3 class="section-title">Недавние игры</h3>
+              <div class="recent-list" id="recent-games"></div>
+            </div>
+            <div class="recent-section">
+              <h3 class="section-title">Новые пользователи</h3>
+              <div class="recent-list" id="recent-users"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Истории -->
+        <section class="content-section" id="stories-section">
+          <div class="filters">
+            <div class="filter-group">
+              <label for="filter-difficulty">Сложность:</label>
+              <select id="filter-difficulty">
+                <option value="">Все</option>
+                <option value="easy">Легкая</option>
+                <option value="medium">Средняя</option>
+                <option value="hard">Сложная</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="filter-category">Категория:</label>
+              <select id="filter-category">
+                <option value="">Все</option>
+                <option value="serial_killers">Серийные убийцы</option>
+                <option value="bank_robbers">Ограбления банков</option>
+                <option value="cybercrime">Киберпреступления</option>
+                <option value="general">Общие</option>
+              </select>
+            </div>
+            <button class="btn btn-secondary" id="apply-filters">Применить</button>
+          </div>
+
+          <div class="stories-list" id="stories-list"></div>
+          
+          <div class="pagination" id="stories-pagination"></div>
+        </section>
+
+        <!-- Пользователи -->
+        <section class="content-section" id="users-section">
+          <div class="users-list" id="users-list"></div>
+          
+          <div class="pagination" id="users-pagination"></div>
+        </section>
+
+        <!-- Статистика -->
+        <section class="content-section" id="stats-section">
+          <div class="stats-tabs">
+            <button class="tab-btn active" data-tab="general">Общее</button>
+            <button class="tab-btn" data-tab="games">Игры</button>
+            <button class="tab-btn" data-tab="stories">Истории</button>
+          </div>
+
+          <div class="stats-content active" id="general-stats"></div>
+          <div class="stats-content" id="games-stats"></div>
+          <div class="stats-content" id="stories-stats"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Модальные окна -->
+    <div class="modal" id="story-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="story-modal-title">Добавить историю</h2>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="story-form">
+            <div class="form-group">
+              <label for="story-text">Текст истории:</label>
+              <textarea id="story-text" rows="5" required></textarea>
+            </div>
+            <div class="form-group">
+              <label>Варианты ответа:</label>
+              <input type="text" id="option-0" placeholder="Вариант 1" required>
+              <input type="text" id="option-1" placeholder="Вариант 2" required>
+              <input type="text" id="option-2" placeholder="Вариант 3" required>
+            </div>
+            <div class="form-group">
+              <label for="correct-answer">Правильный ответ:</label>
+              <select id="correct-answer" required>
+                <option value="0">Вариант 1</option>
+                <option value="1">Вариант 2</option>
+                <option value="2">Вариант 3</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="explanation">Объяснение:</label>
+              <textarea id="explanation" rows="3" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="difficulty">Сложность:</label>
+              <select id="difficulty" required>
+                <option value="easy">Легкая</option>
+                <option value="medium" selected>Средняя</option>
+                <option value="hard">Сложная</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="category">Категория:</label>
+              <select id="category" required>
+                <option value="serial_killers">Серийные убийцы</option>
+                <option value="bank_robbers">Ограбления банков</option>
+                <option value="cybercrime">Киберпреступления</option>
+                <option value="general" selected>Общие</option>
+              </select>
+            </div>
+            <input type="hidden" id="story-id">
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancel-btn">Отмена</button>
+          <button class="btn btn-primary" id="save-story-btn">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="user-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="user-modal-title">Информация о пользователе</h2>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="user-detail" id="user-detail"></div>
+          <div class="user-games">
+            <h3>Последние игры</h3>
+            <div class="user-games-list" id="user-games-list"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="close-user-btn">Закрыть</button>
+          <button class="btn btn-primary" id="toggle-admin-btn">Дать/Забрать права админа</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="confirm-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Подтверждение</h2>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-message">Вы уверены, что хотите выполнить это действие?</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancel-confirm-btn">Отмена</button>
+          <button class="btn btn-danger" id="confirm-btn">Подтвердить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script type="module" src="src/admin.js"></script>
+</body>
+</html> 

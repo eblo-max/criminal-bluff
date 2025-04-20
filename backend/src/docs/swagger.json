@@ -1,0 +1,621 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Criminal Bluff API",
+    "description": "API для мини-приложения Telegram 'Криминальный Блеф'",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Criminal Bluff Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.criminalbluff.com/api",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:3000/api",
+      "description": "Development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "user",
+      "description": "Методы для работы с профилями пользователей"
+    },
+    {
+      "name": "game",
+      "description": "Методы для работы с игровыми сессиями"
+    },
+    {
+      "name": "leaderboard",
+      "description": "Методы для работы с таблицами лидеров"
+    },
+    {
+      "name": "admin",
+      "description": "Методы для администрирования приложения"
+    }
+  ],
+  "paths": {
+    "/leaderboard/global": {
+      "get": {
+        "tags": ["leaderboard"],
+        "summary": "Получить глобальный рейтинг",
+        "description": "Возвращает список лидеров в глобальном рейтинге с поддержкой пагинации",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Номер страницы",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Количество записей на странице",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "leaderboard": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LeaderboardEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Общее количество записей"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Текущая страница"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "description": "Количество записей на странице"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leaderboard/weekly": {
+      "get": {
+        "tags": ["leaderboard"],
+        "summary": "Получить недельный рейтинг",
+        "description": "Возвращает список лидеров в недельном рейтинге с поддержкой пагинации",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Номер страницы",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Количество записей на странице",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "leaderboard": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LeaderboardEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Общее количество записей"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Текущая страница"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "description": "Количество записей на странице"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leaderboard/daily": {
+      "get": {
+        "tags": ["leaderboard"],
+        "summary": "Получить дневной рейтинг",
+        "description": "Возвращает список лидеров в дневном рейтинге с поддержкой пагинации",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Номер страницы",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Количество записей на странице",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "leaderboard": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LeaderboardEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "Общее количество записей"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "Текущая страница"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "description": "Количество записей на странице"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leaderboard/user-position": {
+      "get": {
+        "tags": ["leaderboard"],
+        "summary": "Получить позицию пользователя в рейтинге",
+        "description": "Возвращает позицию пользователя в глобальном, недельном и дневном рейтингах",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный запрос",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "global": {
+                      "type": "object",
+                      "properties": {
+                        "position": {
+                          "type": "integer",
+                          "description": "Позиция в глобальном рейтинге (начинается с 1)"
+                        },
+                        "score": {
+                          "type": "number",
+                          "description": "Счет пользователя"
+                        }
+                      }
+                    },
+                    "weekly": {
+                      "type": "object",
+                      "properties": {
+                        "position": {
+                          "type": "integer",
+                          "description": "Позиция в недельном рейтинге (начинается с 1)"
+                        },
+                        "score": {
+                          "type": "number",
+                          "description": "Счет пользователя за неделю"
+                        }
+                      }
+                    },
+                    "daily": {
+                      "type": "object",
+                      "properties": {
+                        "position": {
+                          "type": "integer",
+                          "description": "Позиция в дневном рейтинге (начинается с 1)"
+                        },
+                        "score": {
+                          "type": "number",
+                          "description": "Счет пользователя за день"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/leaderboards/reset/{type}": {
+      "delete": {
+        "tags": ["admin", "leaderboard"],
+        "summary": "Сбросить лидерборд определенного типа",
+        "description": "Сбрасывает данные в лидерборде указанного типа (daily, weekly, global)",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "description": "Тип лидерборда (daily, weekly, global)",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["daily", "weekly", "global"]
+            }
+          }
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешный сброс",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "description": "Флаг успешности операции"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Сообщение о результате операции"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Неверный тип лидерборда",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Пользователь не является администратором",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Лидерборд не найден",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/leaderboards/rebuild": {
+      "post": {
+        "tags": ["admin", "leaderboard"],
+        "summary": "Пересоздать все лидерборды",
+        "description": "Удаляет все лидерборды и пересоздает их на основе истории игр",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Успешное пересоздание",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "description": "Флаг успешности операции"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Сообщение о результате операции"
+                    },
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "users": {
+                          "type": "integer",
+                          "description": "Количество обработанных пользователей"
+                        },
+                        "games": {
+                          "type": "integer",
+                          "description": "Количество обработанных игр"
+                        },
+                        "dailyLeaderboards": {
+                          "type": "integer",
+                          "description": "Количество созданных дневных лидербордов"
+                        },
+                        "weeklyLeaderboards": {
+                          "type": "integer",
+                          "description": "Количество созданных недельных лидербордов"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Пользователь не авторизован",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Пользователь не является администратором",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Внутренняя ошибка сервера",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "LeaderboardEntry": {
+        "type": "object",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "description": "Позиция в рейтинге (начиная с 1)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "ID пользователя"
+          },
+          "username": {
+            "type": "string",
+            "description": "Имя пользователя"
+          },
+          "firstName": {
+            "type": "string",
+            "description": "Имя пользователя"
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Фамилия пользователя"
+          },
+          "photoUrl": {
+            "type": "string",
+            "description": "URL аватара пользователя"
+          },
+          "score": {
+            "type": "number",
+            "description": "Счет пользователя"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "default": false
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+} 

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="format-detection" content="telephone=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="MobileOptimized" content="176">
+  <meta name="HandheldFriendly" content="True">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Криминальный Блеф</title>
+  <!-- Подключение скриптов Telegram WebApp -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Основные стили -->
+  <link rel="stylesheet" href="src/styles/main.css">
+  <!-- Шрифты -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app">
+    <!-- Заставка -->
+    <div class="splash-screen">
+      <div class="splash-logo">
+        <img src="src/assets/logo.svg" alt="Криминальный Блеф">
+      </div>
+      <h1 class="splash-title">Криминальный Блеф</h1>
+      <p class="splash-subtitle">Тест на детективные способности</p>
+    </div>
+
+    <!-- Стартовый экран -->
+    <div class="screen" id="start-screen">
+      <div class="start-content">
+        <h1 class="app-title">Криминальный Блеф</h1>
+        <p class="app-description">Найди ошибки преступников в реальных историях</p>
+        <div class="button-container">
+          <button class="btn btn-primary" id="start-game-btn">Начать игру</button>
+          <button class="btn btn-secondary" id="profile-btn">Мой профиль</button>
+          <button class="btn btn-secondary" id="leaderboard-btn">Рейтинг</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Игровой экран -->
+    <div class="screen" id="game-screen">
+      <div class="game-header">
+        <div class="timer">
+          <div class="timer-bar"></div>
+          <div class="timer-text">15</div>
+        </div>
+        <div class="progress">
+          <span class="current-question">1</span>/<span class="total-questions">5</span>
+        </div>
+        <div class="streak">
+          <span class="streak-count">0</span>
+          <span class="streak-icon">🔥</span>
+        </div>
+      </div>
+      <div class="story-container">
+        <p class="story-text"></p>
+      </div>
+      <div class="options-container">
+        <button class="option" data-index="0"></button>
+        <button class="option" data-index="1"></button>
+        <button class="option" data-index="2"></button>
+      </div>
+    </div>
+
+    <!-- Экран результата ответа -->
+    <div class="screen" id="answer-result-screen">
+      <div class="result-container">
+        <div class="result-header">
+          <div class="result-icon"></div>
+          <h2 class="result-title"></h2>
+        </div>
+        <div class="explanation-container">
+          <p class="explanation-text"></p>
+        </div>
+        <div class="score-info">
+          <div class="score-item">
+            <span class="score-label">Очки:</span>
+            <span class="score-value"></span>
+          </div>
+          <div class="score-item">
+            <span class="score-label">Серия:</span>
+            <span class="streak-value"></span>
+          </div>
+        </div>
+        <button class="btn btn-primary next-btn">Следующая история</button>
+      </div>
+    </div>
+
+    <!-- Экран результатов игры -->
+    <div class="screen" id="game-result-screen">
+      <div class="game-result-container">
+        <h2 class="result-heading">Результаты</h2>
+        <div class="result-stats">
+          <div class="stat-item">
+            <div class="stat-value" id="correct-answers">0</div>
+            <div class="stat-label">Правильных ответов</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="total-score">0</div>
+            <div class="stat-label">Очков заработано</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="best-streak">0</div>
+            <div class="stat-label">Лучшая серия</div>
+          </div>
+        </div>
+        <div class="result-actions">
+          <button class="btn btn-primary" id="play-again-btn">Играть снова</button>
+          <button class="btn btn-secondary" id="share-result-btn">Поделиться</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Экран профиля -->
+    <div class="screen" id="profile-screen">
+      <div class="profile-header">
+        <button class="back-btn" id="profile-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Мой профиль</h2>
+      </div>
+      <div class="profile-container">
+        <div class="user-info">
+          <div class="user-avatar">
+            <img src="src/assets/default-avatar.svg" alt="Avatar" id="user-avatar">
+          </div>
+          <div class="user-name" id="user-name"></div>
+        </div>
+        <div class="stats-container">
+          <div class="stat-row">
+            <div class="stat-label">Всего игр:</div>
+            <div class="stat-value" id="games-played">0</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">Процент верных:</div>
+            <div class="stat-value" id="accuracy">0%</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">Лучшая серия:</div>
+            <div class="stat-value" id="profile-best-streak">0</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">В рейтинге:</div>
+            <div class="stat-value" id="rank-position">#0</div>
+          </div>
+        </div>
+        <div class="achievements-container">
+          <h3 class="section-title">Достижения</h3>
+          <div class="achievements-list" id="achievements-list">
+            <!-- Достижения будут добавлены динамически -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Экран рейтинга -->
+    <div class="screen" id="leaderboard-screen">
+      <div class="leaderboard-header">
+        <button class="back-btn" id="leaderboard-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Рейтинг</h2>
+      </div>
+      <div class="leaderboard-tabs">
+        <button class="tab-btn active" data-period="daily">Сегодня</button>
+        <button class="tab-btn" data-period="weekly">Неделя</button>
+        <button class="tab-btn" data-period="all-time">За все время</button>
+      </div>
+      <div class="leaderboard-container">
+        <div class="leaderboard-list" id="leaderboard-list">
+          <!-- Записи рейтинга будут добавлены динамически -->
+        </div>
+        <div class="neighbors-container" id="neighbors-container">
+          <h3 class="section-title">Ваше окружение</h3>
+          <div class="neighbors-list" id="neighbors-list">
+            <!-- Соседи пользователя в рейтинге будут добавлены динамически -->
+          </div>
+        </div>
+      </div>
+      <div class="user-rank-container">
+        <div class="user-rank-label">Ваша позиция:</div>
+        <div class="user-rank-value" id="user-rank">#0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS -->
+  <script type="module" src="src/app.js"></script>
+</body>
+</html> 

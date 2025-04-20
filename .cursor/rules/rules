@@ -1,0 +1,192 @@
+# Cursor Rules for Criminal Bluff Telegram Mini App
+
+## Project Overview
+You are an AI assistant working on "Criminal Bluff", a Telegram Mini App quiz game where users guess mistakes made by criminals in real stories. This is a full-stack JavaScript project using Node.js backend with MongoDB database and a vanilla JS frontend integrated with Telegram WebApp API.
+
+## Tech Stack Requirements
+- Backend: Node.js 18+, Express.js, MongoDB, Redis
+- Frontend: Vanilla JavaScript, HTML5, CSS3 (no frameworks)
+- Integration: Telegram WebApp API, node-telegram-bot-api
+- Security: JWT for authentication, input validation
+- Testing: Jest for unit tests, Supertest for API tests
+
+## Coding Standards
+
+### Backend Development
+- Use ES6+ syntax with async/await for asynchronous operations
+- Follow RESTful API principles with proper HTTP methods
+- Implement proper error handling with try/catch blocks
+- Use middleware for authentication, validation, and rate limiting
+- Structure code using MVC pattern: models, controllers, routes
+- Create detailed error messages for debugging but generic ones for production
+- Implement request logging for monitoring
+- Use environment variables for configuration
+- Comment complex business logic and algorithms
+
+### Frontend Development
+- Write clean, modular vanilla JavaScript
+- Use modern CSS features with fallbacks for older browsers
+- Implement mobile-first responsive design
+- Follow BEM naming convention for CSS classes
+- Create reusable UI components as separate modules
+- Optimize for performance (minimize reflows, use requestAnimationFrame)
+- Handle Telegram Mini App specific behaviors (theme, viewport, back button)
+- Implement proper state management for game logic
+- Use localStorage for caching game data when appropriate
+
+### Database Operations
+- Create indexed MongoDB schemas for optimal query performance
+- Use Mongoose for data modeling with proper validation
+- Implement connection pooling for better performance
+- Handle database errors gracefully
+- Use Redis for caching frequently accessed data (stories, leaderboards)
+- Implement data sanitization before database operations
+- Create database migrations for schema changes
+
+### Security Best Practices
+- Validate all user inputs both client and server-side
+- Implement rate limiting for API endpoints
+- Sanitize user data to prevent XSS and injection attacks
+- Use HTTPS for all communications
+- Implement proper CORS configuration
+- Secure JWT tokens with appropriate expiration
+- Hash sensitive data before storing
+- Implement request throttling for game actions
+
+### Game Logic
+- Implement server-side validation for all game actions
+- Create atomic transactions for score updates
+- Implement anti-cheat measures (time validation, action sequence checks)
+- Use Redis for real-time leaderboard updates
+- Handle race conditions in multiplayer scenarios
+- Implement streak detection and bonus calculation
+- Cache frequently accessed stories for performance
+
+### Telegram Integration
+- Use Telegram WebApp API initData for authentication
+- Implement proper validation of Telegram user data
+- Handle theme changes and viewport adjustments
+- Use Telegram's native sharing features
+- Implement inline buttons for in-chat interactions
+- Handle back button behavior properly
+- Respect Telegram's UI/UX guidelines
+
+### Performance Optimization
+- Minimize bundle size with proper code splitting
+- Implement lazy loading for non-critical components
+- Use Redis for caching stories and leaderboards
+- Optimize database queries with proper indexing
+- Implement pagination for large data sets
+- Use compression for API responses
+- Implement client-side caching where appropriate
+
+### Error Handling
+- Create standardized error response format
+- Implement global error handlers
+- Log errors with context for debugging
+- Show user-friendly error messages
+- Implement retry logic for network failures
+- Handle Telegram API errors gracefully
+- Create fallback behaviors for offline scenarios
+
+### Testing Requirements
+- Write unit tests for business logic
+- Create integration tests for API endpoints
+- Implement UI tests for critical user flows
+- Test Telegram integration thoroughly
+- Mock external services for testing
+- Aim for 80%+ code coverage
+- Test edge cases and error scenarios
+
+### Documentation
+- Document all API endpoints with Swagger/OpenAPI
+- Create JSDoc comments for all functions
+- Maintain README with setup instructions
+- Document environment variables and configuration
+- Create deployment guides
+- Document common troubleshooting scenarios
+
+### Monitoring and Analytics
+- Implement error tracking (e.g., Sentry)
+- Set up performance monitoring
+- Track user engagement metrics
+- Monitor API response times
+- Set up alerts for critical errors
+- Log game statistics for analysis
+
+### Code Review Checklist
+- Code follows project standards
+- Proper error handling implemented
+- Security considerations addressed
+- Performance optimized
+- Tests written and passing
+- Documentation updated
+- Telegram integration working properly
+- No console.logs in production code
+
+## Specific Project Requirements
+
+### Game Flow
+1. Always validate time constraints on server-side
+2. Implement atomic score updates
+3. Validate answer submissions against expected game state
+4. Handle concurrent game sessions properly
+5. Implement proper streak counting logic
+
+### UI/UX Guidelines
+1. Follow modern dark theme with neon accents
+2. Implement smooth animations with performance in mind
+3. Ensure touch-friendly interface for mobile
+4. Follow Telegram's design language
+5. Implement proper loading states
+6. Handle offline/error states gracefully
+
+### Data Structure
+1. Keep story documents optimized for quick retrieval
+2. Index frequently queried fields
+3. Implement proper archiving for old leaderboard data
+4. Use Redis for real-time game state
+5. Optimize user profiles for quick updates
+
+## Cursor AI Behavior
+- When creating new files, follow the established project structure
+- Always consider security implications in code suggestions
+- Prioritize performance in algorithm implementations
+- Suggest efficient database queries
+- Consider edge cases and error scenarios
+- Follow Telegram Mini App best practices
+- Maintain consistency with existing codebase
+- Suggest appropriate test scenarios
+- Consider mobile-first approach in UI development
+- Optimize for Telegram's environment constraints
+
+## File Structure
+```
+criminal-bluff/
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── middlewares/
+│   │   ├── models/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   └── utils/
+│   ├── tests/
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── styles/
+│   ├── public/
+│   └── index.html
+├── shared/
+│   └── types/
+├── .env.example
+├── .cursorrules
+└── README.md
+```
+
+When working on this project, always consider the Telegram Mini App environment, optimize for mobile devices, and maintain high code quality with proper security measures.

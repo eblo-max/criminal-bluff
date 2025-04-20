@@ -1,0 +1,25 @@
+{
+  "name": "criminal-bluff",
+  "version": "1.0.0",
+  "description": "Telegram Mini App quiz game about criminal mistakes",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "test": "cd backend && npm test"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "telegram",
+    "mini-app",
+    "quiz",
+    "criminal"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 

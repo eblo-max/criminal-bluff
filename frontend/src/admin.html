@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Административная панель</title>
+    <link rel="stylesheet" href="styles/admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">Админ-панель</h1>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-link" data-target="dashboard">
+                    <i class="icon dashboard-icon"></i>
+                    <span>Панель управления</span>
+                </a>
+                <a href="#" class="nav-link" data-target="stories">
+                    <i class="icon stories-icon"></i>
+                    <span>Управление историями</span>
+                </a>
+                <a href="#" class="nav-link" data-target="users">
+                    <i class="icon users-icon"></i>
+                    <span>Пользователи</span>
+                </a>
+                <a href="#" class="nav-link" data-target="stats">
+                    <i class="icon stats-icon"></i>
+                    <span>Статистика</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <a href="#" id="logout-btn" class="btn btn-outline">Выйти</a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="content-section">
+                <div class="section-header">
+                    <h2>Панель управления</h2>
+                </div>
+                <div class="stats-overview">
+                    <div class="stat-card">
+                        <div class="stat-card-content">
+                            <h3 class="stat-title">Всего пользователей</h3>
+                            <div class="stat-value" id="total-users-value">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-content">
+                            <h3 class="stat-title">Активных пользователей</h3>
+                            <div class="stat-value" id="active-users-value">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-content">
+                            <h3 class="stat-title">Всего игр</h3>
+                            <div class="stat-value" id="total-games-value">0</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-card-content">
+                            <h3 class="stat-title">Средний счет</h3>
+                            <div class="stat-value" id="average-score-value">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="recent-activity">
+                    <div class="recent-games">
+                        <div class="section-header">
+                            <h3>Недавние игры</h3>
+                        </div>
+                        <div class="recent-list" id="recent-games-list">
+                            <!-- Recent games will be loaded here -->
+                            <div class="loading-placeholder">Загрузка данных...</div>
+                        </div>
+                    </div>
+                    <div class="recent-users">
+                        <div class="section-header">
+                            <h3>Новые пользователи</h3>
+                        </div>
+                        <div class="recent-list" id="recent-users-list">
+                            <!-- Recent users will be loaded here -->
+                            <div class="loading-placeholder">Загрузка данных...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stories Section -->
+            <section id="stories" class="content-section">
+                <div class="section-header">
+                    <h2>Управление историями</h2>
+                    <button class="btn btn-primary" data-modal="add-story-modal">Добавить историю</button>
+                </div>
+                
+                <div class="filter-container">
+                    <form id="story-filters" class="filter-form">
+                        <div class="filter-group">
+                            <label for="category-filter">Категория:</label>
+                            <select id="category-filter" name="category">
+                                <option value="">Все категории</option>
+                                <option value="science">Наука</option>
+                                <option value="history">История</option>
+                                <option value="literature">Литература</option>
+                                <option value="sports">Спорт</option>
+                                <option value="other">Другое</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="difficulty-filter">Сложность:</label>
+                            <select id="difficulty-filter" name="difficulty">
+                                <option value="">Все</option>
+                                <option value="easy">Легкая</option>
+                                <option value="medium">Средняя</option>
+                                <option value="hard">Сложная</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="status-filter">Статус:</label>
+                            <select id="status-filter" name="status">
+                                <option value="">Все</option>
+                                <option value="active">Активные</option>
+                                <option value="inactive">Неактивные</option>
+                            </select>
+                        </div>
+                        <div class="filter-group search-group">
+                            <input type="text" id="search-filter" name="search" placeholder="Поиск по названию...">
+                            <button type="submit" class="btn btn-secondary">Применить</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="list-container">
+                    <div class="stories-list">
+                        <!-- Stories will be loaded here -->
+                        <div class="loading-placeholder">Загрузка историй...</div>
+                    </div>
+                    <div class="pagination" id="stories-pagination">
+                        <!-- Pagination will be generated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Users Section -->
+            <section id="users" class="content-section">
+                <div class="section-header">
+                    <h2>Пользователи</h2>
+                </div>
+                
+                <div class="filter-container">
+                    <form id="user-filters" class="filter-form">
+                        <div class="filter-group">
+                            <label for="role-filter">Роль:</label>
+                            <select id="role-filter" name="role">
+                                <option value="">Все роли</option>
+                                <option value="user">Обычный пользователь</option>
+                                <option value="admin">Администратор</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="user-status-filter">Статус:</label>
+                            <select id="user-status-filter" name="status">
+                                <option value="">Все</option>
+                                <option value="active">Активные</option>
+                                <option value="inactive">Неактивные</option>
+                            </select>
+                        </div>
+                        <div class="filter-group search-group">
+                            <input type="text" id="user-search" name="search" placeholder="Поиск по имени или email...">
+                            <button type="submit" class="btn btn-secondary">Применить</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="list-container">
+                    <div class="users-list">
+                        <!-- Users will be loaded here -->
+                        <div class="loading-placeholder">Загрузка пользователей...</div>
+                    </div>
+                    <div class="pagination" id="users-pagination">
+                        <!-- Pagination will be generated here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stats Section -->
+            <section id="stats" class="content-section">
+                <div class="section-header">
+                    <h2>Статистика</h2>
+                </div>
+                
+                <div class="tabs-container">
+                    <div class="tabs-header">
+                        <button class="tab-btn active" data-target="user-stats">Статистика пользователей</button>
+                        <button class="tab-btn" data-target="game-stats">Статистика игр</button>
+                        <button class="tab-btn" data-target="achievement-stats">Достижения</button>
+                    </div>
+                    <div class="tabs-content">
+                        <div id="user-stats" class="stats-content active">
+                            <!-- User statistics will be loaded here -->
+                            <div class="loading-placeholder">Загрузка статистики пользователей...</div>
+                        </div>
+                        <div id="game-stats" class="stats-content">
+                            <!-- Game statistics will be loaded here -->
+                            <div class="loading-placeholder">Загрузка статистики игр...</div>
+                        </div>
+                        <div id="achievement-stats" class="stats-content">
+                            <!-- Achievement statistics will be loaded here -->
+                            <div class="loading-placeholder">Загрузка статистики достижений...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add/Edit Story Modal -->
+    <div id="add-story-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Добавить историю</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-story-form">
+                    <div class="form-group">
+                        <label for="story-title">Название истории:</label>
+                        <input type="text" id="story-title" name="title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="story-category">Категория:</label>
+                        <select id="story-category" name="category" required>
+                            <option value="">Выберите категорию</option>
+                            <option value="science">Наука</option>
+                            <option value="history">История</option>
+                            <option value="literature">Литература</option>
+                            <option value="sports">Спорт</option>
+                            <option value="other">Другое</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="story-difficulty">Сложность:</label>
+                        <select id="story-difficulty" name="difficulty" required>
+                            <option value="">Выберите сложность</option>
+                            <option value="easy">Легкая</option>
+                            <option value="medium">Средняя</option>
+                            <option value="hard">Сложная</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="story-content">Содержание истории:</label>
+                        <textarea id="story-content" name="content" rows="10" required></textarea>
+                    </div>
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" name="is_active" checked>
+                            <span>Активна</span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline cancel-btn">Отмена</button>
+                <button type="submit" form="add-story-form" class="btn btn-primary">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Details Modal -->
+    <div id="user-details-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Информация о пользователе</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="user-details">
+                    <div class="detail-group">
+                        <div class="detail-label">Имя:</div>
+                        <div class="detail-value user-name-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Email:</div>
+                        <div class="detail-value user-email-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Роль:</div>
+                        <div class="detail-value user-role-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Дата регистрации:</div>
+                        <div class="detail-value user-registration-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Последний вход:</div>
+                        <div class="detail-value user-last-login-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Количество игр:</div>
+                        <div class="detail-value user-games-count-value"></div>
+                    </div>
+                    <div class="detail-group">
+                        <div class="detail-label">Средний счет:</div>
+                        <div class="detail-value user-avg-score-value"></div>
+                    </div>
+                </div>
+                
+                <div class="user-games">
+                    <h4>Последние игры</h4>
+                    <div class="user-games-list">
+                        <!-- User games will be loaded here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline close-btn">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Подтвердите действие</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Вы уверены, что хотите удалить этот элемент? Это действие нельзя отменить.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline cancel-btn">Отмена</button>
+                <button type="button" class="btn btn-danger confirm-btn">Удалить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html> 
