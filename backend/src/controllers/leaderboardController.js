@@ -5,11 +5,17 @@ const { User } = require('../models');
 const redisService = require('../services/redisService');
 const logger = require('../utils/logger');
 const telegramService = require('../config/telegram');
+const { startTransaction, captureException } = require('../config/sentry');
 
 /**
  * Получить глобальный рейтинг (за все время)
  */
-exports.getGlobalLeaderboard = async (req, res) => {
+async function getGlobalLeaderboard(req, res) {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'get_global_leaderboard'
+  });
+
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -23,6 +29,8 @@ exports.getGlobalLeaderboard = async (req, res) => {
     const leaderboardData = await redisService.getLeaderboardRange(leaderboardKey, start, end);
     
     if (!leaderboardData || leaderboardData.length === 0) {
+      transaction.setStatus('data_error');
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Рейтинг пуст или еще не сформирован',
@@ -69,6 +77,8 @@ exports.getGlobalLeaderboard = async (req, res) => {
       };
     }).filter(Boolean); // Удаляем null значения
     
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Глобальный рейтинг успешно получен',
@@ -82,23 +92,33 @@ exports.getGlobalLeaderboard = async (req, res) => {
     });
     
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardController',
+        method: 'getGlobalLeaderboard'
+      }
+    });
+    
     logger.error(`Error getting global leaderboard: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении глобального рейтинга'
     });
   }
-};
-
-/**
- * Синоним для getGlobalLeaderboard для сохранения совместимости с API
- */
-exports.getAllTimeLeaderboard = exports.getGlobalLeaderboard;
+}
 
 /**
  * Получить еженедельный рейтинг
  */
-exports.getWeeklyLeaderboard = async (req, res) => {
+async function getWeeklyLeaderboard(req, res) {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'get_weekly_leaderboard'
+  });
+
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -117,6 +137,8 @@ exports.getWeeklyLeaderboard = async (req, res) => {
     const leaderboardData = await redisService.getLeaderboardRange(leaderboardKey, start, end);
     
     if (!leaderboardData || leaderboardData.length === 0) {
+      transaction.setStatus('data_error');
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Еженедельный рейтинг пуст или еще не сформирован',
@@ -166,6 +188,8 @@ exports.getWeeklyLeaderboard = async (req, res) => {
       };
     }).filter(Boolean); // Удаляем null значения
     
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Еженедельный рейтинг успешно получен',
@@ -183,18 +207,33 @@ exports.getWeeklyLeaderboard = async (req, res) => {
     });
     
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardController',
+        method: 'getWeeklyLeaderboard'
+      }
+    });
+    
     logger.error(`Error getting weekly leaderboard: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении еженедельного рейтинга'
     });
   }
-};
+}
 
 /**
- * Получить дневной рейтинг
+ * Получить ежедневный рейтинг
  */
-exports.getDailyLeaderboard = async (req, res) => {
+async function getDailyLeaderboard(req, res) {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'get_daily_leaderboard'
+  });
+
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -212,6 +251,8 @@ exports.getDailyLeaderboard = async (req, res) => {
     const leaderboardData = await redisService.getLeaderboardRange(leaderboardKey, start, end);
     
     if (!leaderboardData || leaderboardData.length === 0) {
+      transaction.setStatus('data_error');
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Дневной рейтинг пуст или еще не сформирован',
@@ -258,6 +299,8 @@ exports.getDailyLeaderboard = async (req, res) => {
       };
     }).filter(Boolean); // Удаляем null значения
     
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Дневной рейтинг успешно получен',
@@ -272,18 +315,33 @@ exports.getDailyLeaderboard = async (req, res) => {
     });
     
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardController',
+        method: 'getDailyLeaderboard'
+      }
+    });
+    
     logger.error(`Error getting daily leaderboard: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении дневного рейтинга'
     });
   }
-};
+}
 
 /**
- * Получить позицию конкретного пользователя в рейтингах
+ * Получить позицию пользователя в рейтингах
  */
-exports.getUserPosition = async (req, res) => {
+async function getUserPosition(req, res) {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'get_user_position'
+  });
+
   try {
     const userId = req.user._id.toString();
     
@@ -327,6 +385,8 @@ exports.getUserPosition = async (req, res) => {
     
     const dailyScore = await redisService.getScore(dailyKey, userId) || 0;
     
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Позиция пользователя в рейтингах успешно получена',
@@ -350,18 +410,33 @@ exports.getUserPosition = async (req, res) => {
     });
     
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardController',
+        method: 'getUserPosition'
+      }
+    });
+    
     logger.error(`Error getting user position: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении позиции пользователя в рейтингах'
     });
   }
-};
+}
 
 /**
- * Получить соседей пользователя в рейтинге (5 пользователей выше и 5 ниже)
+ * Получить соседей пользователя в рейтинге
  */
-exports.getUserNeighbors = async (req, res) => {
+async function getUserNeighbors(req, res) {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'get_user_neighbors'
+  });
+
   try {
     const userId = req.user._id.toString();
     const range = parseInt(req.query.range) || 5; // Количество соседей в каждую сторону
@@ -373,6 +448,7 @@ exports.getUserNeighbors = async (req, res) => {
     let userPosition = await redisService.getRank(leaderboardKey, userId);
     
     if (userPosition === null) {
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'Пользователь не найден в рейтинге'
@@ -387,6 +463,7 @@ exports.getUserNeighbors = async (req, res) => {
     const leaderboardData = await redisService.getLeaderboardRange(leaderboardKey, startAbove, endBelow);
     
     if (!leaderboardData || leaderboardData.length === 0) {
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Нет соседей в рейтинге',
@@ -425,6 +502,8 @@ exports.getUserNeighbors = async (req, res) => {
       };
     }).filter(Boolean); // Удаляем null значения
     
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Соседи пользователя в рейтинге успешно получены',
@@ -433,13 +512,23 @@ exports.getUserNeighbors = async (req, res) => {
     });
     
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardController',
+        method: 'getUserNeighbors'
+      }
+    });
+    
     logger.error(`Error getting user neighbors: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении соседей пользователя в рейтинге'
     });
   }
-};
+}
 
 /**
  * Вспомогательная функция для получения номера недели
@@ -460,6 +549,11 @@ function getWeekNumber(date) {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 async function publishLeaderboardToTelegram(leaderboardType = 'weekly') {
+    const transaction = startTransaction({
+        op: 'leaderboard',
+        name: 'publish_leaderboard_to_telegram'
+    });
+
     try {
         // Получаем топ-3 из соответствующего лидерборда
         let key;
@@ -480,6 +574,8 @@ async function publishLeaderboardToTelegram(leaderboardType = 'weekly') {
         
         if (!leaderboardData || leaderboardData.length === 0) {
             logger.warn(`No data found for leaderboard type: ${leaderboardType}`);
+            transaction.setStatus('data_error');
+            transaction.finish();
             return false;
         }
 
@@ -496,13 +592,18 @@ async function publishLeaderboardToTelegram(leaderboardType = 'weekly') {
         
         if (result) {
             logger.info(`Published ${leaderboardType} leaderboard to Telegram channel successfully`);
+            transaction.finish();
             return true;
         } else {
             logger.warn(`Failed to publish ${leaderboardType} leaderboard to Telegram channel`);
+            transaction.setStatus('error');
+            transaction.finish();
             return false;
         }
     } catch (error) {
         logger.error(`Error publishing leaderboard to Telegram: ${error.message}`);
+        transaction.setStatus('error');
+        transaction.finish();
         return false;
     }
 }
@@ -515,12 +616,19 @@ async function publishLeaderboardToTelegram(leaderboardType = 'weekly') {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 async function notifyUserAboutRanking(userId, position, type) {
+    const transaction = startTransaction({
+        op: 'leaderboard',
+        name: 'notify_user_about_ranking'
+    });
+
     try {
         // Получаем данные пользователя
         const userData = await redisService.getUserDataById(userId);
         
         if (!userData || !userData.telegramId) {
             logger.warn(`Cannot notify user ${userId} about ranking: user data or telegramId not found`);
+            transaction.setStatus('user_not_found');
+            transaction.finish();
             return false;
         }
 
@@ -552,6 +660,8 @@ async function notifyUserAboutRanking(userId, position, type) {
             
             if (!leaderboardData || leaderboardData.length === 0) {
                 logger.warn(`No data found for leaderboard type: ${type}`);
+                transaction.setStatus('data_error');
+                transaction.finish();
                 return !!personalResult;
             }
 
@@ -567,13 +677,17 @@ async function notifyUserAboutRanking(userId, position, type) {
             const channelResult = await telegramService.publishLeaderboardToChannel(formattedLeaderboard, type);
             
             logger.info(`Published user rank achievement to Telegram: personal notification=${!!personalResult}, channel publication=${!!channelResult}`);
+            transaction.finish();
             return !!personalResult || !!channelResult;
         }
 
         logger.info(`Sent leaderboard position notification to user ${userId}, position: ${position}, type: ${type}`);
+        transaction.finish();
         return !!personalResult;
     } catch (error) {
         logger.error(`Error notifying user about ranking: ${error.message}`);
+        transaction.setStatus('error');
+        transaction.finish();
         return false;
     }
 }
@@ -585,6 +699,7 @@ module.exports = {
     getDailyLeaderboard,
     getUserPosition,
     getUserNeighbors,
+    getAllTimeLeaderboard: getGlobalLeaderboard,
     publishLeaderboardToTelegram,
     notifyUserAboutRanking
 };

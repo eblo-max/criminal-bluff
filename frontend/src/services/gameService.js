@@ -1,3 +1,6 @@
+import httpService from './httpService';
+import errorService from './errorService';
+
 /**
  * Game Service
  * Сервис для управления игровой логикой
@@ -34,6 +37,11 @@ export class GameService {
    * Начало новой игры
    */
   async startGame() {
+    const transaction = errorService.startTransaction({
+      op: 'game',
+      name: 'start_game'
+    });
+    
     try {
       this.uiService.showLoading();
       
@@ -56,10 +64,13 @@ export class GameService {
       }
       
       this.uiService.hideLoading();
+      transaction.finish();
     } catch (error) {
       console.error('Start game error:', error);
       this.uiService.hideLoading();
       this.uiService.showError('Не удалось начать игру. Пожалуйста, попробуйте позже.');
+      transaction.setStatus('error');
+      transaction.finish();
     }
   }
   
@@ -161,6 +172,11 @@ export class GameService {
    * @param {boolean} isTimeout - флаг окончания времени
    */
   async submitAnswer(optionIndex, isTimeout = false) {
+    const transaction = errorService.startTransaction({
+      op: 'game',
+      name: 'submit_answer'
+    });
+    
     try {
       // Останавливаем таймер
       clearInterval(this.timer);
@@ -202,10 +218,32 @@ export class GameService {
         // Обновляем UI счета
         document.querySelector('.streak-count').textContent = this.gameSession.streak || 0;
       }
+      
+      transaction.finish();
     } catch (error) {
       console.error('Submit answer error:', error);
       this.uiService.hideLoading();
       this.uiService.showError('Ошибка при отправке ответа. Пожалуйста, попробуйте еще раз.');
+      transaction.setStatus('error');
+      transaction.finish();
+      
+      // Метрика ошибок ответа на вопрос
+      errorService.captureMessage(
+        `Ошибка при отправке ответа: ${error.message}`, 
+        'error',
+        {
+          tags: {
+            gameId: this.gameSession.id,
+            questionId: this.gameSession.stories[this.currentStoryIndex]._id,
+            answerId: isTimeout ? null : optionIndex
+          },
+          extra: {
+            responseTime
+          }
+        }
+      );
+      
+      throw error;
     }
   }
   
@@ -283,6 +321,11 @@ export class GameService {
    * Завершение игры
    */
   async finishGame() {
+    const transaction = errorService.startTransaction({
+      op: 'game',
+      name: 'finish_game'
+    });
+    
     try {
       this.uiService.showLoading();
       
@@ -305,6 +348,8 @@ export class GameService {
       
       // Отображаем экран результатов
       this.showGameResults();
+      
+      transaction.finish();
     } catch (error) {
       console.error('Finish game error:', error);
       this.uiService.hideLoading();
@@ -312,6 +357,20 @@ export class GameService {
       
       // Всё равно показываем результаты
       this.showGameResults();
+      transaction.setStatus('error');
+      transaction.finish();
+      
+      // Критическая ошибка, так как влияет на сохранение результатов
+      errorService.captureException(error, {
+        tags: {
+          component: 'gameService',
+          method: 'finishGame',
+          gameId: this.gameSession.id
+        },
+        level: 'fatal'
+      });
+      
+      throw error;
     }
   }
   

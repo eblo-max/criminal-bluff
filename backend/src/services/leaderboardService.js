@@ -6,6 +6,8 @@ const redisService = require('./redisService');
 const { User } = require('../models');
 const logger = require('../utils/logger');
 const leaderboardController = require('../controllers/leaderboardController');
+const telegram = require('../config/telegram');
+const { startTransaction, captureException } = require('../config/sentry');
 
 /**
  * Обновить рейтинги пользователя
@@ -15,10 +17,17 @@ const leaderboardController = require('../controllers/leaderboardController');
  * @returns {Promise<boolean>} - Успешность обновления
  */
 const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'update_user_leaderboards'
+  });
+
   try {
     // Проверяем входные данные
     if (!userId || gameScore === undefined || totalScore === undefined) {
       logger.error('Invalid parameters for updateUserLeaderboards');
+      transaction.setStatus('failed');
+      transaction.finish();
       return false;
     }
 
@@ -66,8 +75,20 @@ const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
       checkRankChangeAndNotify(userIdStr, allTimeKey, prevAllTimeRank, 'all-time')
     ]);
     
+    transaction.finish();
     return true;
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardService',
+        method: 'updateUserLeaderboards',
+        userId
+      }
+    });
+    
     logger.error(`Error updating leaderboards: ${error.message}`);
     return false;
   }
@@ -82,6 +103,11 @@ const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
  * @returns {Promise<boolean>} - Результат операции
  */
 const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leaderboardType) => {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'check_rank_change'
+  });
+
   try {
     // Получаем новый ранг
     const newRank = await redisService.getRank(leaderboardKey, userId);
@@ -94,6 +120,7 @@ const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leader
       // Если пользователь попал в топ-10, отправляем уведомление
       if (humanReadableRank <= 10) {
         await leaderboardController.notifyUserAboutRanking(userId, humanReadableRank, leaderboardType);
+        transaction.finish();
         return true;
       }
     } 
@@ -111,12 +138,25 @@ const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leader
           (humanReadableRank <= 10 && rankDifference >= 3) || 
           rankDifference >= 10) {
         await leaderboardController.notifyUserAboutRanking(userId, humanReadableRank, leaderboardType);
+        transaction.finish();
         return true;
       }
     }
     
+    transaction.finish();
     return false;
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardService',
+        method: 'checkRankChangeAndNotify',
+        userId
+      }
+    });
+    
     logger.error(`Error checking rank change: ${error.message}`);
     return false;
   }
@@ -163,9 +203,24 @@ function getWeekNumber(date) {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 const publishWeeklyLeaderboard = async () => {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'publish_weekly_leaderboard'
+  });
+
   try {
     return await leaderboardController.publishLeaderboardToTelegram('weekly');
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardService',
+        method: 'publishWeeklyLeaderboard'
+      }
+    });
+    
     logger.error(`Error publishing weekly leaderboard: ${error.message}`);
     return false;
   }
@@ -176,9 +231,24 @@ const publishWeeklyLeaderboard = async () => {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 const publishDailyLeaderboard = async () => {
+  const transaction = startTransaction({
+    op: 'leaderboard',
+    name: 'publish_daily_leaderboard'
+  });
+
   try {
     return await leaderboardController.publishLeaderboardToTelegram('daily');
   } catch (error) {
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    captureException(error, {
+      tags: {
+        component: 'leaderboardService',
+        method: 'publishDailyLeaderboard'
+      }
+    });
+    
     logger.error(`Error publishing daily leaderboard: ${error.message}`);
     return false;
   }

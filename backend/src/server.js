@@ -18,7 +18,9 @@ const swaggerDocument = require('./docs/swagger.json');
 const logger = require('./utils/logger');
 const errorHandler = require('./middlewares/errorHandler');
 const config = require('./config/env');
+const { connectDB } = require('./config/database');
 const { initScheduler } = require('./config/scheduler');
+const { initSentry, sentryMiddleware, sentryErrorHandler } = require('./config/sentry');
 
 // Import API routes
 const gameRoutes = require('./routes/gameRoutes');
@@ -26,39 +28,52 @@ const userRoutes = require('./routes/userRoutes');
 const leaderboardRoutes = require('./routes/leaderboardRoutes');
 const telegramRoutes = require('./routes/telegramRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const webAppRoutes = require('./routes/webAppRoutes');
 
 // Initialize Express app
 const app = express();
 const PORT = config.PORT;
 
+// Initialize Sentry for error monitoring
+initSentry(app);
+
+// Apply Sentry middleware (if configured)
+app.use(...sentryMiddleware(app));
+
 // Security and utility middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(compression());
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 // Rate limiting
-const apiLimiter = rateLimit({
-  windowMs: config.RATE_LIMIT_WINDOW_MS,
-  max: config.RATE_LIMIT_MAX,
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 минут
+  max: 100, // 100 запросов с одного IP в течение windowMs
   standardHeaders: true,
   legacyHeaders: false,
-  message: 'Too many requests from this IP, please try again after some time'
+  message: {
+    success: false,
+    message: 'Слишком много запросов с вашего IP, пожалуйста, попробуйте позже'
+  }
 });
-app.use('/api', apiLimiter);
+app.use('/api/', limiter);
 
-// API Routes
+// Request logging
+if (config.NODE_ENV !== 'test') {
+  app.use(morgan('dev', {
+    stream: { write: message => logger.info(message.trim()) }
+  }));
+}
+
+// API routes
 app.use('/api/game', gameRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
-
-// Telegram webhook route (без rate limiting)
-app.use('/', telegramRoutes);
-
-// Admin routes
+app.use('/api/telegram', telegramRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/webapp', webAppRoutes);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
@@ -79,51 +94,29 @@ if (config.NODE_ENV === 'production') {
   });
 }
 
+// Apply Sentry error handler (before our own error handler)
+app.use(sentryErrorHandler());
+
 // Error handling middleware
 app.use(errorHandler);
 
-// Connect to MongoDB and start the server
-mongoose
-  .connect(config.MONGODB_URI)
-  .then(() => {
-    // Создаем первого администратора, если задан ADMIN_TELEGRAM_ID
-    if (config.ADMIN_TELEGRAM_ID) {
-      const { User } = require('./models');
-      User.findOneAndUpdate(
-        { telegramId: config.ADMIN_TELEGRAM_ID },
-        { isAdmin: true },
-        { new: true }
-      )
-      .then(user => {
-        if (user) {
-          logger.info(`Admin user updated: ${user.username || user.telegramId}`);
-        } else {
-          logger.warn(`Admin user with telegramId ${config.ADMIN_TELEGRAM_ID} not found`);
-        }
-      })
-      .catch(err => {
-        logger.error(`Error updating admin user: ${err.message}`);
+// Connect to the database
+if (config.NODE_ENV !== 'test') {
+  connectDB()
+    .then(() => {
+      // Initialize scheduler
+      initScheduler();
+      
+      // Start the server
+      app.listen(PORT, () => {
+        logger.info(`Server running on port ${PORT} in ${config.NODE_ENV} mode`);
       });
-    }
-
-    // Инициализируем планировщик задач
-    initScheduler();
-
-    app.listen(PORT, () => {
-      logger.info(`Server running in ${config.NODE_ENV} mode on port ${PORT}`);
-      logger.info(`API Documentation available at http://localhost:${PORT}/api-docs`);
+    })
+    .catch(err => {
+      logger.error(`Failed to connect to the database: ${err.message}`);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    logger.error(`Error connecting to MongoDB: ${err.message}`);
-    process.exit(1);
-  });
+}
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  logger.error(`Unhandled Rejection: ${err}`);
-  // Close server & exit process
-  process.exit(1);
-});
-
-module.exports = app; // For testing purposes 
+// Export app for testing
+module.exports = app; 

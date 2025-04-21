@@ -1,0 +1,6 @@
+{
+  "projectId": "9defa403-2544-4a53-97d5-c3c9c547286f",
+  "plugins": {
+    "mongodb": "shared"
+  }
+} 

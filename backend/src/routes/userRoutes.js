@@ -11,7 +11,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
  * @desc    Create or update a user profile from Telegram data
  * @access  Public
  */
-router.post('/create', userController.createUser);
+router.post('/create', userController.getOrCreateUser);
 
 /**
  * @route   POST /api/user/telegram-auth
@@ -28,21 +28,21 @@ router.use(authMiddleware);
  * @desc    Get the current user profile
  * @access  Private
  */
-router.get('/profile', userController.getProfile);
+router.get('/profile', userController.getUserProfile);
 
 /**
  * @route   GET /api/user/achievements
  * @desc    Get user achievements
  * @access  Private
  */
-router.get('/achievements', userController.getAchievements);
+router.get('/achievements', userController.getUserAchievements);
 
 /**
  * @route   GET /api/user/stats
  * @desc    Get user game statistics
  * @access  Private
  */
-router.get('/stats', userController.getStats);
+router.get('/stats', userController.getUserStats);
 
 /**
  * @route   GET /api/user/webapp-config

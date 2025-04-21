@@ -2,6 +2,7 @@
  * Global error handling middleware
  */
 const logger = require('../utils/logger');
+const { captureException } = require('../config/sentry');
 
 /**
  * Error response structure
@@ -34,9 +35,34 @@ const errorHandler = (err, req, res, next) => {
   const message = err.message || 'Server Error';
 
   // Log the error
-  logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
-  if (err.stack) {
-    logger.error(err.stack);
+  const errorLogMessage = `${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`;
+  if (statusCode >= 500) {
+    logger.error(errorLogMessage);
+    if (err.stack) {
+      logger.error(err.stack);
+    }
+    
+    // Отправляем ошибку в Sentry для серьезных ошибок
+    captureException(err, {
+      tags: {
+        method: req.method,
+        url: req.originalUrl
+      },
+      user: req.user ? {
+        id: req.user._id,
+        telegramId: req.user.telegramId,
+        username: req.user.username
+      } : undefined,
+      extra: {
+        query: req.query,
+        params: req.params,
+        // Не отправляем тело запроса, так как оно может содержать чувствительные данные
+        // body: req.body 
+      }
+    });
+  } else {
+    // Для ошибок клиента просто логируем
+    logger.warn(errorLogMessage);
   }
 
   // Send response

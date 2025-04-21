@@ -10,13 +10,6 @@ const authMiddleware = require('../middlewares/authMiddleware');
 router.use(authMiddleware);
 
 /**
- * @route   GET /api/leaderboard/daily
- * @desc    Get the daily leaderboard
- * @access  Private
- */
-router.get('/daily', leaderboardController.getDailyLeaderboard);
-
-/**
  * @route   GET /api/leaderboard/weekly
  * @desc    Get the weekly leaderboard
  * @access  Private
@@ -31,17 +24,24 @@ router.get('/weekly', leaderboardController.getWeeklyLeaderboard);
 router.get('/all-time', leaderboardController.getAllTimeLeaderboard);
 
 /**
- * @route   GET /api/leaderboard/user-position
- * @desc    Get the user's position across all leaderboards
+ * @route   GET /api/leaderboard/global
+ * @desc    Get the global leaderboard (same as all-time)
  * @access  Private
  */
-router.get('/user-position', leaderboardController.getUserPosition);
+router.get('/global', leaderboardController.getAllTimeLeaderboard);
 
 /**
- * @route   GET /api/leaderboard/user-neighbors
- * @desc    Get users adjacent to the current user in the leaderboard
+ * @route   GET /api/leaderboard/user/:userId
+ * @desc    Get user's position in leaderboards
  * @access  Private
  */
-router.get('/user-neighbors', leaderboardController.getUserNeighbors);
+router.get('/user/:userId', leaderboardController.getUserPosition);
+
+/**
+ * @route   GET /api/leaderboard/neighbors/:userId
+ * @desc    Get user's neighbors in the leaderboard
+ * @access  Private
+ */
+router.get('/neighbors/:userId', leaderboardController.getUserNeighbors);
 
 module.exports = router; 

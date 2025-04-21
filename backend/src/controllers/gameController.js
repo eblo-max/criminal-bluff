@@ -7,12 +7,19 @@ const { calculateScore } = require('../utils/scoreCalculator');
 const { checkAchievements } = require('../utils/achievementChecker');
 const redisService = require('../services/redisService');
 const leaderboardService = require('../services/leaderboardService');
+const { startTransaction, captureException } = require('../config/sentry');
 
 /**
  * Начать новую игру
  * Получить 5 случайных историй и создать игровую сессию
  */
 exports.startGame = async (req, res) => {
+  // Создаем транзакцию Sentry для отслеживания производительности
+  const transaction = startTransaction({
+    op: 'game',
+    name: 'start_game'
+  });
+  
   try {
     const user = req.user;
     
@@ -28,6 +35,7 @@ exports.startGame = async (req, res) => {
         _id: { $in: activeSession.stories }
       });
       
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Найдена активная игровая сессия',
@@ -43,6 +51,8 @@ exports.startGame = async (req, res) => {
     
     // Если историй недостаточно, возвращаем ошибку
     if (totalStories < 5) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'Недостаточно историй для начала игры'
@@ -84,6 +94,9 @@ exports.startGame = async (req, res) => {
       });
     }
     
+    // Завершаем транзакцию
+    transaction.finish();
+    
     // Возвращаем данные для начала игры
     return res.status(200).json({
       success: true,
@@ -95,6 +108,19 @@ exports.startGame = async (req, res) => {
     });
     
   } catch (error) {
+    // Отмечаем транзакцию как неудачную и завершаем её
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    // Отправляем ошибку в Sentry
+    captureException(error, {
+      tags: {
+        component: 'gameController',
+        method: 'startGame',
+        userId: req.user?._id
+      }
+    });
+    
     logger.error(`Error starting game: ${error.message}`);
     return res.status(500).json({
       success: false,
@@ -107,12 +133,20 @@ exports.startGame = async (req, res) => {
  * Отправить ответ на текущую историю
  */
 exports.submitAnswer = async (req, res) => {
+  // Создаем транзакцию Sentry для отслеживания производительности
+  const transaction = startTransaction({
+    op: 'game',
+    name: 'submit_answer'
+  });
+  
   try {
     const user = req.user;
     const { gameId, storyId, selectedOption, responseTime } = req.body;
     
     // Проверка наличия всех нужных данных
     if (!gameId || !storyId) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(400).json({
         success: false,
         message: 'Не указан ID игры или истории'
@@ -127,6 +161,8 @@ exports.submitAnswer = async (req, res) => {
     });
     
     if (!gameSession) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'Активная игровая сессия не найдена'
@@ -137,6 +173,8 @@ exports.submitAnswer = async (req, res) => {
     const story = await Story.findById(storyId);
     
     if (!story) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'История не найдена'
@@ -147,6 +185,8 @@ exports.submitAnswer = async (req, res) => {
     const alreadyAnswered = gameSession.answers.some(a => a.storyId.toString() === storyId);
     
     if (alreadyAnswered) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(400).json({
         success: false,
         message: 'Вы уже ответили на эту историю'
@@ -209,6 +249,9 @@ exports.submitAnswer = async (req, res) => {
       }
     }
     
+    // Завершаем транзакцию
+    transaction.finish();
+    
     // Возвращаем результат
     return res.status(200).json({
       success: true,
@@ -220,6 +263,21 @@ exports.submitAnswer = async (req, res) => {
     });
     
   } catch (error) {
+    // Отмечаем транзакцию как неудачную и завершаем её
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    // Отправляем ошибку в Sentry
+    captureException(error, {
+      tags: {
+        component: 'gameController',
+        method: 'submitAnswer',
+        userId: req.user?._id,
+        gameId: req.body?.gameId,
+        storyId: req.body?.storyId
+      }
+    });
+    
     logger.error(`Error submitting answer: ${error.message}`);
     return res.status(500).json({
       success: false,
@@ -232,11 +290,19 @@ exports.submitAnswer = async (req, res) => {
  * Завершить текущую игру
  */
 exports.finishGame = async (req, res) => {
+  // Создаем транзакцию Sentry для отслеживания производительности
+  const transaction = startTransaction({
+    op: 'game',
+    name: 'finish_game'
+  });
+  
   try {
     const user = req.user;
     const { gameId } = req.body;
     
     if (!gameId) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(400).json({
         success: false,
         message: 'Не указан ID игры'
@@ -250,6 +316,8 @@ exports.finishGame = async (req, res) => {
     });
     
     if (!gameSession) {
+      transaction.setStatus('failed');
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'Игровая сессия не найдена'
@@ -263,6 +331,7 @@ exports.finishGame = async (req, res) => {
       const totalScore = gameSession.totalScore;
       const bestStreak = gameSession.streak;
       
+      transaction.finish();
       return res.status(200).json({
         success: true,
         message: 'Игра уже завершена',
@@ -318,6 +387,9 @@ exports.finishGame = async (req, res) => {
       await checkAchievements(user._id, 'master');
     }
     
+    // Завершаем транзакцию
+    transaction.finish();
+    
     return res.status(200).json({
       success: true,
       message: 'Игра успешно завершена',
@@ -327,6 +399,21 @@ exports.finishGame = async (req, res) => {
     });
     
   } catch (error) {
+    // Отмечаем транзакцию как неудачную и завершаем её
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    // Отправляем ошибку в Sentry
+    captureException(error, {
+      tags: {
+        component: 'gameController',
+        method: 'finishGame',
+        userId: req.user?._id,
+        gameId: req.body?.gameId
+      },
+      level: 'fatal' // Критическая ошибка, т.к. может привести к потере прогресса игрока
+    });
+    
     logger.error(`Error finishing game: ${error.message}`);
     return res.status(500).json({
       success: false,
@@ -339,6 +426,12 @@ exports.finishGame = async (req, res) => {
  * Получить текущую активную игровую сессию
  */
 exports.getCurrentGame = async (req, res) => {
+  // Создаем транзакцию Sentry для отслеживания производительности
+  const transaction = startTransaction({
+    op: 'game',
+    name: 'get_current_game'
+  });
+  
   try {
     const user = req.user;
     
@@ -349,6 +442,7 @@ exports.getCurrentGame = async (req, res) => {
     });
     
     if (!gameSession) {
+      transaction.finish();
       return res.status(404).json({
         success: false,
         message: 'Активная игровая сессия не найдена'
@@ -359,6 +453,9 @@ exports.getCurrentGame = async (req, res) => {
     const stories = await Story.find({
       _id: { $in: gameSession.stories }
     });
+    
+    // Завершаем транзакцию
+    transaction.finish();
     
     return res.status(200).json({
       success: true,
@@ -372,6 +469,19 @@ exports.getCurrentGame = async (req, res) => {
     });
     
   } catch (error) {
+    // Отмечаем транзакцию как неудачную и завершаем её
+    transaction.setStatus('error');
+    transaction.finish();
+    
+    // Отправляем ошибку в Sentry
+    captureException(error, {
+      tags: {
+        component: 'gameController',
+        method: 'getCurrentGame',
+        userId: req.user?._id
+      }
+    });
+    
     logger.error(`Error getting current game: ${error.message}`);
     return res.status(500).json({
       success: false,
