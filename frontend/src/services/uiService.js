@@ -544,4 +544,7 @@ export class UiService {
     const hex = value.toString(16);
     return hex.length === 1 ? '0' + hex : hex;
   }
-} 
+}
+
+// Экспортируем единственный экземпляр сервиса для унификации с другими сервисами
+export const uiService = new UiService(); 

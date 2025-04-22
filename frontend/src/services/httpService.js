@@ -1,5 +1,5 @@
 import axios from 'axios';
-import * as sentryService from './sentryService';
+import { sentryService } from './sentryService';
 
 // Создаем инстанс axios с базовым URL
 const http = axios.create({
@@ -28,7 +28,7 @@ http.interceptors.request.use(
     return config;
   },
   error => {
-    // Отправляем ошибку в систему мониторинга
+    // Логируем ошибку запроса
     sentryService.captureException(error, {
       tags: { component: 'httpService', type: 'request' }
     });
@@ -42,7 +42,7 @@ http.interceptors.response.use(
     return response;
   },
   error => {
-    // Отправляем информацию об ошибке в систему мониторинга
+    // Логируем информацию об ошибке
     const errorData = {
       tags: { 
         component: 'httpService', 
@@ -55,7 +55,7 @@ http.interceptors.response.use(
       }
     };
     
-    // Игнорируем ошибки авторизации в системе мониторинга
+    // Игнорируем ошибки авторизации в логировании
     if (error.response?.status !== 401) {
       sentryService.captureException(error, errorData);
     }

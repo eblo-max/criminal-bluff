@@ -2,7 +2,7 @@
  * API Service
  * Сервис для взаимодействия с бэкэндом
  */
-import * as sentryService from './sentryService.js';
+import { sentryService } from './sentryService';
 
 export class ApiService {
   constructor() {
@@ -318,4 +318,7 @@ export class ApiService {
   async getSystemStats() {
     return this.fetchData('/admin/stats');
   }
-} 
+}
+
+// Экспортируем единственный экземпляр сервиса
+export const apiService = new ApiService(); 

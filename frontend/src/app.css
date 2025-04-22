@@ -1,0 +1,22 @@
+/* Основной CSS файл для приложения */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Переменные для темы */
+:root {
+  --primary-color: #2196F3;
+  --secondary-color: #FF5722;
+  --text-color: #212121;
+  --bg-color: #FFFFFF;
+  --error-color: #F44336;
+  --success-color: #4CAF50;
+} 

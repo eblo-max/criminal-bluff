@@ -1032,4 +1032,7 @@ export class TelegramService {
       return null;
     }
   }
-} 
+}
+
+// Экспортируем сервис как синглтон для унификации с другими сервисами
+export const telegramService = _instance || new TelegramService(); 

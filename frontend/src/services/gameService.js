@@ -1,19 +1,29 @@
-import * as sentryService from './sentryService';
+import { sharedState } from './common';
+import { sentryService } from './sentryService';
+import { apiService } from './apiService';
+import { uiService } from './uiService';
 
 /**
  * Game Service
  * Сервис для управления игровой логикой
  */
 class GameService {
-  constructor(apiService, uiService) {
-    this.apiService = apiService;
-    this.uiService = uiService;
+  constructor() {
+    this.apiService = null;
+    this.uiService = null;
     
-    // Текущая игровая сессия
-    this.gameSession = null;
-    
-    // Текущая история
+    this.userId = null;
+    this.gameId = null;
+    this.currentStoryId = null;
     this.currentStoryIndex = 0;
+    this.totalStories = 0;
+    this.stories = [];
+    this.answers = [];
+    this.timer = null;
+    this.timeLeft = 0;
+    this.storiesDuration = 15; // По умолчанию время на ответ - 15 секунд
+    this.timerUpdateInterval = 50; // Интервал обновления таймера в ms
+    this.isInitialized = false;
     
     // Результаты игры
     this.gameResults = {
@@ -23,10 +33,8 @@ class GameService {
     };
     
     // Таймер
-    this.timer = null;
-    this.timerValue = 15;
-    this.timerBarElement = document.querySelector('.timer-bar');
-    this.timerTextElement = document.querySelector('.timer-text');
+    this.timerBarElement = null;
+    this.timerTextElement = null;
     
     // Начало ответа (для расчета времени ответа)
     this.answerStartTime = null;
@@ -40,358 +48,442 @@ class GameService {
   }
   
   /**
-   * Начало новой игры
+   * Инициализация сервиса игры
+   * @param {Object} apiService - сервис для работы с API
+   * @param {Object} uiService - сервис для работы с UI
    */
-  async startGame() {
-    // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = sentryService.startTransaction({
-      name: 'startGame',
-      op: 'game.start'
-    });
-    
-    try {
-      this.uiService.showLoading();
-      
-      // Получаем новую игровую сессию
-      const gameData = await this.apiService.startGame();
-      
-      if (gameData && gameData.stories && gameData.stories.length > 0) {
-        this.gameSession = gameData;
-        this.currentStoryIndex = 0;
-        this.gameResults = {
-          correctAnswers: 0,
-          totalScore: 0,
-          bestStreak: 0
-        };
-        
-        // Отображаем первую историю
-        this.displayStory(this.currentStoryIndex);
-        
-        // Вызываем колбэк начала игры
-        if (this.onGameStart) {
-          this.onGameStart(this.gameSession);
-        }
-        
-        this.uiService.hideLoading();
-        transaction.setStatus('ok');
-        return this.gameSession;
-      } else {
-        throw new Error('Не удалось начать игру. Пожалуйста, попробуйте позже.');
-      }
-    } catch (error) {
-      console.error('Start game error:', error);
-      this.uiService.hideLoading();
-      this.uiService.showError('Не удалось начать игру. Пожалуйста, попробуйте позже.');
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          gameAction: 'startGame'
-        }
-      });
-      transaction.finish();
-      return null;
-    }
-  }
-  
-  /**
-   * Отображение истории
-   * @param {number} index - индекс истории для отображения
-   */
-  displayStory(index) {
-    if (!this.gameSession || !this.gameSession.stories || index >= this.gameSession.stories.length) {
-      console.error('Invalid story index or no stories available');
+  init(apiService, uiService) {
+    if (this.isInitialized) {
+      sharedState.log('GameService уже инициализирован', 'warn');
       return;
     }
     
-    const story = this.gameSession.stories[index];
+    try {
+      this.apiService = apiService;
+      this.uiService = uiService;
+      
+      // Состояние игры
+      this.gameId = null;
+      this.stories = [];
+      this.currentStoryIndex = 0;
+      this.answers = [];
+      this.timer = null;
+      this.remainingTime = 0;
+      this.gameResults = null;
+      
+      this.isInitialized = true;
+      this.isGameActive = false;
+      
+      sharedState.log('GameService инициализирован успешно');
+      
+      // Безопасно получаем ссылки на DOM-элементы таймера
+      this.timerBarElement = document.querySelector('.timer-bar');
+      this.timerTextElement = document.querySelector('.timer-text');
+      
+      return true;
+    } catch (error) {
+      sharedState.log(`Ошибка при инициализации GameService: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      return false;
+    }
+  }
+  
+  /**
+   * Начать новую игру
+   * @param {string} userId - идентификатор пользователя
+   * @returns {Promise<boolean>} - успешность начала игры
+   */
+  async startGame(userId) {
+    try {
+      if (!this.isInitialized) {
+        throw new Error('GameService не инициализирован');
+      }
+      
+      if (this.isGameActive) {
+        this.resetGameState();
+      }
+      
+      // Начинаем транзакцию для отслеживания производительности
+      const transaction = sentryService.startTransaction({
+        name: 'game.start',
+        op: 'game'
+      });
+      
+      // Запрашиваем данные для новой игры
+      const response = await this.apiService.startGame();
+      
+      if (!response.success) {
+        throw new Error(response.message || 'Не удалось начать игру');
+      }
+      
+      // Сохраняем данные игры
+      this.gameId = response.gameId;
+      this.stories = response.stories || [];
+      this.currentStoryIndex = 0;
+      this.answers = [];
+      this.isGameActive = true;
+      
+      transaction.finish();
+      
+      // Отображаем первую историю
+      if (this.stories.length > 0) {
+        this.displayStory(0);
+        return true;
+      } else {
+        throw new Error('Получен пустой список историй');
+      }
+    } catch (error) {
+      sharedState.log(`Ошибка при начале игры: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      return false;
+    }
+  }
+  
+  /**
+   * Сброс состояния игры
+   */
+  resetGameState() {
+    this.gameId = null;
+    this.currentStoryId = null;
+    this.currentStoryIndex = 0;
+    this.answers = [];
+    this.clearTimer();
     
-    // Обновляем текст истории
-    document.querySelector('.story-text').textContent = story.text;
-    
-    // Обновляем варианты ответа
-    const options = document.querySelectorAll('.option');
-    story.options.forEach((option, i) => {
-      options[i].textContent = option;
-      options[i].classList.remove('correct', 'incorrect');
-      options[i].disabled = false;
+    // Скрываем результаты ответа, если они отображались
+    sharedState.safelyManipulateDOM('#answer-result', element => {
+      element.classList.add('hidden');
     });
     
-    // Обновляем прогресс
-    document.querySelector('.current-question').textContent = index + 1;
-    document.querySelector('.total-questions').textContent = this.gameSession.stories.length;
-    
-    // Обновляем счетчик серии
-    document.querySelector('.streak-count').textContent = this.gameSession.streak || 0;
-    
-    // Сбрасываем и запускаем таймер
-    this.resetTimer();
-    this.startTimer();
-    
-    // Запоминаем время начала ответа
-    this.answerStartTime = Date.now();
+    sharedState.safelyManipulateDOM('#game-results', element => {
+      element.classList.add('hidden');
+    });
   }
   
   /**
-   * Запуск таймера
+   * Отобразить историю с указанным индексом
+   * @param {number} index - индекс истории
+   * @returns {boolean} - результат отображения
+   */
+  displayStory(index) {
+    if (!this.isInitialized) {
+      sharedState.log('GameService не инициализирован', 'error');
+      return false;
+    }
+    
+    try {
+      if (index < 0 || index >= this.stories.length) {
+        sharedState.log(`Некорректный индекс истории: ${index}`, 'error');
+        return false;
+      }
+      
+      const story = this.stories[index];
+      this.currentStoryId = story.id;
+      this.currentStoryIndex = index;
+      
+      // Обновляем DOM-элементы
+      sharedState.safelyManipulateDOM('#story-text', element => {
+        element.innerHTML = story.text || 'Загрузка истории...';
+      });
+      
+      sharedState.safelyManipulateDOM('#story-container', element => {
+        element.classList.remove('hidden');
+      });
+      
+      sharedState.safelyManipulateDOM('#answer-options', element => {
+        element.innerHTML = '';
+        
+        // Создаем кнопки для вариантов ответа
+        if (story.options && Array.isArray(story.options)) {
+          story.options.forEach((option, optionIndex) => {
+            const button = document.createElement('button');
+            button.classList.add('answer-button');
+            button.dataset.optionId = option.id;
+            button.textContent = option.text || `Вариант ${optionIndex + 1}`;
+            
+            button.addEventListener('click', () => {
+              this.submitAnswer(option.id, optionIndex);
+            });
+            
+            element.appendChild(button);
+          });
+        }
+      });
+      
+      // Обновляем прогресс
+      sharedState.safelyManipulateDOM('#story-progress', element => {
+        element.textContent = `История ${index + 1} из ${this.totalStories}`;
+      });
+      
+      // Запускаем таймер
+      this.startTimer();
+      
+      // Запоминаем время начала ответа
+      this.answerStartTime = Date.now();
+      
+      return true;
+    } catch (error) {
+      sharedState.log(`Ошибка при отображении истории: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      return false;
+    }
+  }
+  
+  /**
+   * Запуск таймера для текущей истории
    */
   startTimer() {
-    clearInterval(this.timer);
-    this.timerValue = 15;
+    // Очищаем предыдущий таймер, если он был
+    this.clearTimer();
+    
+    // Инициализируем время
+    this.timeLeft = this.storiesDuration;
+    
+    // Обновляем UI таймера
     this.updateTimerUI();
     
+    // Запускаем интервал обновления
     this.timer = setInterval(() => {
-      this.timerValue--;
-      this.updateTimerUI();
+      this.timeLeft -= this.timerUpdateInterval / 1000;
       
-      if (this.timerValue <= 0) {
-        clearInterval(this.timer);
-        this.handleTimerEnd();
+      if (this.timeLeft <= 0) {
+        this.timeLeft = 0;
+        this.clearTimer();
+        this.timeOut(); // Вызываем функцию по истечении времени
       }
-    }, 1000);
+      
+      this.updateTimerUI();
+    }, this.timerUpdateInterval);
   }
   
   /**
-   * Сброс таймера
+   * Очистка таймера
    */
-  resetTimer() {
-    clearInterval(this.timer);
-    this.timerValue = 15;
-    this.updateTimerUI();
+  clearTimer() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
   
   /**
    * Обновление UI таймера
    */
   updateTimerUI() {
-    if (this.timerBarElement && this.timerTextElement) {
-      const percentage = (this.timerValue / 15) * 100;
-      this.timerBarElement.style.width = `${percentage}%`;
-      this.timerTextElement.textContent = this.timerValue;
+    sharedState.safelyManipulateDOM('#timer', element => {
+      // Округляем до десятых
+      const seconds = Math.max(0, Math.round(this.timeLeft * 10) / 10).toFixed(1);
+      element.textContent = seconds;
       
-      // Меняем цвет при малом времени
-      if (this.timerValue <= 5) {
-        this.timerBarElement.style.backgroundColor = 'var(--error-color)';
+      // Меняем цвет при малом количестве времени
+      if (this.timeLeft <= 5) {
+        element.classList.add('timer-warning');
       } else {
-        this.timerBarElement.style.backgroundColor = 'var(--accent-color)';
-      }
-    }
-  }
-  
-  /**
-   * Обработка окончания времени
-   */
-  handleTimerEnd() {
-    // Если время вышло, отправляем пустой ответ
-    this.submitAnswer(-1, true);
-  }
-  
-  /**
-   * Отправка ответа
-   * @param {number} optionIndex - индекс выбранного варианта ответа
-   * @param {boolean} isTimeout - флаг окончания времени
-   */
-  async submitAnswer(optionIndex, isTimeout = false) {
-    // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = sentryService.startTransaction({
-      name: 'submitAnswer',
-      op: 'game.answer',
-      data: {
-        storyIndex: this.currentStoryIndex,
-        optionIndex: optionIndex
+        element.classList.remove('timer-warning');
       }
     });
     
+    // Обновление прогресс-бара
+    sharedState.safelyManipulateDOM('#timer-progress', element => {
+      const progress = (this.timeLeft / this.storiesDuration) * 100;
+      element.style.width = `${progress}%`;
+      
+      // Меняем цвет прогресс-бара при малом количестве времени
+      if (this.timeLeft <= 5) {
+        element.classList.add('timer-progress-warning');
+      } else {
+        element.classList.remove('timer-progress-warning');
+      }
+    });
+  }
+  
+  /**
+   * Отправка ответа на сервер
+   * @param {string} optionId - ID выбранного варианта
+   * @param {number} optionIndex - индекс выбранного варианта
+   */
+  async submitAnswer(optionId, optionIndex) {
+    if (!this.isInitialized || !this.gameId || !this.currentStoryId) {
+      sharedState.log('Невозможно отправить ответ: игра не инициализирована или нет активной истории', 'error');
+      return;
+    }
+    
     try {
       // Останавливаем таймер
-      clearInterval(this.timer);
+      this.clearTimer();
       
-      // Если время вышло, блокируем кнопки
-      if (isTimeout) {
-        const options = document.querySelectorAll('.option');
-        options.forEach(option => {
-          option.disabled = true;
+      const transaction = sentryService.startTransaction({
+        name: 'submitAnswer',
+        op: 'game.answer'
+      });
+      
+      sentryService.setContext('answer', {
+        gameId: this.gameId,
+        storyId: this.currentStoryId,
+        optionId: optionId,
+        optionIndex: optionIndex,
+        timeSpent: this.storiesDuration - this.timeLeft
+      });
+      
+      // Блокируем кнопки ответов
+      sharedState.safelyManipulateDOM('#answer-options', element => {
+        const buttons = element.querySelectorAll('.answer-button');
+        buttons.forEach(button => {
+          button.disabled = true;
         });
-      }
-      
-      // Вычисляем время ответа
-      const responseTime = this.answerStartTime ? Date.now() - this.answerStartTime : 15000;
-      
-      // Данные для отправки
-      const answerData = {
-        gameId: this.gameSession.id,
-        storyId: this.gameSession.stories[this.currentStoryIndex]._id,
-        selectedOption: isTimeout ? null : optionIndex,
-        responseTime
-      };
-      
-      this.uiService.showLoading();
+      });
       
       // Отправляем ответ на сервер
-      const result = await this.apiService.submitAnswer(answerData);
+      const result = await this.apiService.submitAnswer(
+        this.gameId,
+        this.currentStoryId,
+        optionId,
+        this.storiesDuration - this.timeLeft
+      );
       
-      this.uiService.hideLoading();
-      
-      // Если получили результат
-      if (result) {
-        // Обновляем игровую сессию
-        this.gameSession = result.gameSession;
+      if (!result) {
+        sharedState.log('Получен пустой ответ от сервера при отправке ответа', 'error');
+        transaction.setStatus('api_error');
+        transaction.finish();
         
-        // Показываем результат ответа
-        this.showAnswerResult(result);
-        
-        // Обновляем UI счета
-        document.querySelector('.streak-count').textContent = this.gameSession.streak || 0;
-        
-        // Вызываем колбэк отправки ответа
-        if (this.onAnswerSubmit) {
-          this.onAnswerSubmit(optionIndex, result.correctIndex, result.explanation);
-        }
+        sharedState.showErrorMessage('Ошибка при отправке ответа. Пожалуйста, попробуйте еще раз.');
+        return;
       }
+      
+      // Сохраняем ответ
+      this.answers.push({
+        storyId: this.currentStoryId,
+        optionId: optionId,
+        optionIndex: optionIndex,
+        isCorrect: result.isCorrect,
+        explanation: result.explanation,
+        points: result.points
+      });
       
       transaction.setStatus('ok');
       transaction.finish();
+      
+      // Показываем результат
+      this.showAnswerResult(result, optionIndex);
     } catch (error) {
-      console.error('Submit answer error:', error);
-      this.uiService.hideLoading();
-      this.uiService.showError('Ошибка при отправке ответа. Пожалуйста, попробуйте еще раз.');
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          gameAction: 'submitAnswer',
-          storyIndex: this.currentStoryIndex
-        }
+      sharedState.log(`Ошибка при отправке ответа: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      
+      sharedState.showErrorMessage('Не удалось отправить ответ. Пожалуйста, попробуйте еще раз.');
+      
+      // Разблокируем кнопки ответов
+      sharedState.safelyManipulateDOM('#answer-options', element => {
+        const buttons = element.querySelectorAll('.answer-button');
+        buttons.forEach(button => {
+          button.disabled = false;
+        });
       });
-      transaction.finish();
-      
-      // Метрика ошибок ответа на вопрос
-      sentryService.captureMessage(
-        `Ошибка при отправке ответа: ${error.message}`, 
-        'error',
-        {
-          tags: {
-            gameId: this.gameSession.id,
-            questionId: this.gameSession.stories[this.currentStoryIndex]._id,
-            answerId: isTimeout ? null : optionIndex
-          },
-          extra: {
-            responseTime
-          }
-        }
-      );
-      
-      throw error;
     }
   }
   
   /**
-   * Отображение результата ответа
+   * Показать результат ответа
    * @param {Object} result - результат ответа с сервера
+   * @param {number} selectedIndex - индекс выбранного варианта
    */
-  showAnswerResult(result) {
-    const answerResultScreen = document.getElementById('answer-result-screen');
-    const resultIcon = answerResultScreen.querySelector('.result-icon');
-    const resultTitle = answerResultScreen.querySelector('.result-title');
-    const explanationText = answerResultScreen.querySelector('.explanation-text');
-    const scoreValue = answerResultScreen.querySelector('.score-value');
-    const streakValue = answerResultScreen.querySelector('.streak-value');
-    const nextBtn = answerResultScreen.querySelector('.next-btn');
-    
-    // Обновляем UI результата
-    if (result.isCorrect) {
-      resultIcon.innerHTML = '✅';
-      resultTitle.textContent = 'Правильно!';
-      resultTitle.style.color = 'var(--success-color)';
-      this.gameResults.correctAnswers++;
-    } else {
-      resultIcon.innerHTML = '❌';
-      resultTitle.textContent = 'Неверно!';
-      resultTitle.style.color = 'var(--error-color)';
+  showAnswerResult(result, selectedIndex) {
+    try {
+      // Скрываем историю
+      sharedState.safelyManipulateDOM('#story-container', element => {
+        element.classList.add('hidden');
+      });
+      
+      // Обновляем результат ответа
+      sharedState.safelyManipulateDOM('#answer-result', element => {
+        element.classList.remove('hidden');
+        
+        // Устанавливаем заголовок и класс в зависимости от правильности ответа
+        const resultTitle = element.querySelector('#result-title');
+        if (resultTitle) {
+          resultTitle.textContent = result.isCorrect ? 'Верно!' : 'Неверно!';
+          resultTitle.className = result.isCorrect ? 'result-correct' : 'result-incorrect';
+        }
+        
+        // Устанавливаем объяснение
+        const resultExplanation = element.querySelector('#result-explanation');
+        if (resultExplanation) {
+          resultExplanation.innerHTML = result.explanation || 'Нет объяснения';
+        }
+        
+        // Устанавливаем количество очков
+        const resultPoints = element.querySelector('#result-points');
+        if (resultPoints) {
+          resultPoints.textContent = `+${result.points || 0}`;
+        }
+      });
+      
+      // Добавляем кнопку "Далее"
+      sharedState.safelyManipulateDOM('#next-button-container', element => {
+        element.classList.remove('hidden');
+        
+        const nextButton = element.querySelector('#next-button');
+        if (nextButton) {
+          // Удаляем старые обработчики
+          const newNextButton = nextButton.cloneNode(true);
+          nextButton.parentNode.replaceChild(newNextButton, nextButton);
+          
+          // Добавляем новый обработчик
+          newNextButton.addEventListener('click', () => {
+            // Проверяем, была ли это последняя история
+            if (this.currentStoryIndex >= this.totalStories - 1) {
+              this.finishGame();
+            } else {
+              this.nextStory();
+            }
+          });
+        }
+      });
+    } catch (error) {
+      sharedState.log(`Ошибка при отображении результата ответа: ${error.message}`, 'error');
+      sentryService.captureException(error);
     }
-    
-    // Объяснение
-    explanationText.textContent = result.explanation;
-    
-    // Очки и серия
-    scoreValue.textContent = `+${result.pointsEarned || 0}`;
-    streakValue.textContent = this.gameSession.streak || 0;
-    
-    // Обновляем общий счет
-    this.gameResults.totalScore += (result.pointsEarned || 0);
-    
-    // Обновляем лучшую серию
-    if (this.gameSession.streak > this.gameResults.bestStreak) {
-      this.gameResults.bestStreak = this.gameSession.streak;
-    }
-    
-    // Если это последняя история, меняем текст кнопки
-    if (this.currentStoryIndex === this.gameSession.stories.length - 1) {
-      nextBtn.textContent = 'Завершить игру';
-    } else {
-      nextBtn.textContent = 'Следующая история';
-    }
-    
-    // Показываем экран результата
-    this.uiService.showScreen(answerResultScreen);
   }
   
   /**
    * Переход к следующей истории
    */
   async nextStory() {
-    // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = sentryService.startTransaction({
-      name: 'nextStory',
-      op: 'game.next',
-      data: {
-        currentStoryIndex: this.currentStoryIndex,
-        totalStories: this.gameSession?.stories.length
-      }
-    });
-    
     try {
-      if (!this.gameSession || !this.gameSession.gameId) {
-        transaction.setStatus('invalid_argument');
-        sentryService.captureMessage('Attempted to go to next story without active game', 'warning');
-        this.uiService.showError('Не удалось перейти к следующей истории: игра не активна.');
-        return;
-      }
-      
-      // Увеличиваем индекс текущей истории
-      this.currentStoryIndex++;
-      
-      // Проверяем, есть ли еще истории
-      if (this.currentStoryIndex < this.gameSession.stories.length) {
-        const currentStory = this.gameSession.stories[this.currentStoryIndex];
-        
-        // Отображаем следующую историю
-        this.displayStory(this.currentStoryIndex);
-        
-        // Вызываем колбэк следующей истории
-        if (this.onNextStory) {
-          this.onNextStory(
-            currentStory,
-            this.currentStoryIndex,
-            this.gameSession.stories.length
-          );
-        }
-      } else {
-        // Если истории закончились, завершаем игру
-        await this.finishGame();
-      }
-      
-      transaction.setStatus('ok');
-    } catch (error) {
-      console.error('Next story error:', error);
-      this.uiService.showError('Произошла ошибка при переходе к следующей истории. Попробуйте снова.');
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          gameAction: 'nextStory',
-          storyIndex: this.currentStoryIndex
-        }
+      const transaction = sentryService.startTransaction({
+        name: 'nextStory',
+        op: 'game.navigation'
       });
-    } finally {
-      transaction.finish();
+      
+      // Скрываем результат предыдущего ответа
+      sharedState.safelyManipulateDOM('#answer-result', element => {
+        element.classList.add('hidden');
+      });
+      
+      sharedState.safelyManipulateDOM('#next-button-container', element => {
+        element.classList.add('hidden');
+      });
+      
+      // Отображаем следующую историю
+      const nextIndex = this.currentStoryIndex + 1;
+      if (nextIndex < this.stories.length) {
+        const success = this.displayStory(nextIndex);
+        
+        transaction.setStatus(success ? 'ok' : 'display_error');
+        transaction.finish();
+        
+        return success;
+      } else {
+        // Если больше нет историй, заканчиваем игру
+        transaction.setStatus('game_end');
+        transaction.finish();
+        
+        return this.finishGame();
+      }
+    } catch (error) {
+      sharedState.log(`Ошибка при переходе к следующей истории: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      
+      sharedState.showErrorMessage('Не удалось загрузить следующую историю.');
+      return false;
     }
   }
   
@@ -399,154 +491,178 @@ class GameService {
    * Завершение игры
    */
   async finishGame() {
-    // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = sentryService.startTransaction({
-      name: 'finishGame',
-      op: 'game.finish'
-    });
-    
     try {
-      if (!this.gameSession || !this.gameSession.gameId) {
-        transaction.setStatus('invalid_argument');
-        sentryService.captureMessage('Attempted to finish game without active game', 'warning');
-        this.uiService.showError('Не удалось завершить игру: игра не активна.');
-        return;
-      }
+      const transaction = sentryService.startTransaction({
+        name: 'finishGame',
+        op: 'game.finish'
+      });
       
-      // Отправляем данные о завершении игры
-      const gameData = {
-        gameId: this.gameSession.id
-      };
+      // Скрываем результат ответа, если он отображается
+      sharedState.safelyManipulateDOM('#answer-result', element => {
+        element.classList.add('hidden');
+      });
       
-      const result = await this.apiService.finishGame(gameData);
+      // Скрываем кнопку "Далее"
+      sharedState.safelyManipulateDOM('#next-button-container', element => {
+        element.classList.add('hidden');
+      });
       
-      this.uiService.hideLoading();
+      // Отправляем запрос на завершение игры
+      const result = await this.apiService.finishGame(this.gameId);
       
-      // Обновляем игровые результаты
-      if (result) {
-        this.gameResults = {
-          ...this.gameResults,
-          ...result
-        };
-      }
-      
-      // Отображаем экран результатов
-      this.showGameResults();
-      
-      // Сбрасываем данные игры
-      this.gameSession = null;
-      this.currentStoryIndex = 0;
-      
-      // Вызываем колбэк завершения игры
-      if (this.onGameComplete) {
-        this.onGameComplete(this.gameResults);
+      if (!result) {
+        sharedState.log('Получен пустой ответ от сервера при завершении игры', 'error');
+        transaction.setStatus('api_error');
+        transaction.finish();
+        
+        sharedState.showErrorMessage('Ошибка при завершении игры.');
+        return false;
       }
       
       transaction.setStatus('ok');
-    } catch (error) {
-      console.error('Finish game error:', error);
-      this.uiService.hideLoading();
-      this.uiService.showError('Ошибка при завершении игры. Результаты могут быть не сохранены.');
+      transaction.finish();
       
-      // Всё равно показываем результаты
-      this.showGameResults();
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          gameAction: 'finishGame'
+      // Показываем результаты игры
+      return this.showGameResults(result);
+    } catch (error) {
+      sharedState.log(`Ошибка при завершении игры: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      
+      sharedState.showErrorMessage('Не удалось завершить игру. Пожалуйста, попробуйте еще раз.');
+      return false;
+    }
+  }
+  
+  /**
+   * Показать результаты игры
+   * @param {Object} results - результаты игры с сервера
+   */
+  showGameResults(results) {
+    try {
+      // Обновляем DOM
+      sharedState.safelyManipulateDOM('#game-results', element => {
+        element.classList.remove('hidden');
+        
+        // Заполняем данные результатов
+        const totalScore = element.querySelector('#total-score');
+        if (totalScore) {
+          totalScore.textContent = results.totalScore || 0;
+        }
+        
+        const correctAnswers = element.querySelector('#correct-answers');
+        if (correctAnswers) {
+          correctAnswers.textContent = `${results.correctAnswers || 0} из ${this.totalStories}`;
+        }
+        
+        // Настраиваем кнопку "Новая игра"
+        const newGameButton = element.querySelector('#new-game-button');
+        if (newGameButton) {
+          // Удаляем старые обработчики
+          const newButton = newGameButton.cloneNode(true);
+          newGameButton.parentNode.replaceChild(newButton, newGameButton);
+          
+          // Добавляем новый обработчик
+          newButton.addEventListener('click', () => {
+            // Скрываем результаты
+            element.classList.add('hidden');
+            
+            // Запускаем новую игру
+            this.startGame(this.userId);
+          });
+        }
+        
+        // Настраиваем кнопку "На главную"
+        const homeButton = element.querySelector('#home-button');
+        if (homeButton) {
+          // Удаляем старые обработчики
+          const newButton = homeButton.cloneNode(true);
+          homeButton.parentNode.replaceChild(newButton, homeButton);
+          
+          // Добавляем новый обработчик
+          newButton.addEventListener('click', () => {
+            // Скрываем результаты
+            element.classList.add('hidden');
+            
+            // Скрываем экран игры
+            sharedState.safelyManipulateDOM('#game-screen', gameScreen => {
+              gameScreen.classList.add('hidden');
+            });
+            
+            // Показываем главное меню
+            if (this.uiService) {
+              this.uiService.showScreen('main-menu');
+            }
+          });
         }
       });
-    } finally {
-      transaction.finish();
+      
+      return true;
+    } catch (error) {
+      sharedState.log(`Ошибка при отображении результатов игры: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      
+      sharedState.showErrorMessage('Не удалось отобразить результаты игры.');
+      return false;
     }
   }
   
   /**
-   * Отображение результатов игры
-   */
-  showGameResults() {
-    const gameResultScreen = document.getElementById('game-result-screen');
-    
-    // Обновляем UI результатов
-    document.getElementById('correct-answers').textContent = this.gameResults.correctAnswers;
-    document.getElementById('total-score').textContent = this.gameResults.totalScore;
-    document.getElementById('best-streak').textContent = this.gameResults.bestStreak;
-    
-    // Показываем экран результатов
-    this.uiService.showScreen(gameResultScreen);
-  }
-  
-  /**
-   * Получение результатов игры
-   * @returns {Object} - результаты игры
+   * Получить результаты текущей игры
+   * @returns {Object} - объект с результатами игры
    */
   getGameResults() {
-    return this.gameResults;
+    return {
+      gameId: this.gameId,
+      totalStories: this.totalStories,
+      answeredStories: this.answers.length,
+      correctAnswers: this.answers.filter(answer => answer.isCorrect).length,
+      totalScore: this.answers.reduce((sum, answer) => sum + (answer.points || 0), 0)
+    };
   }
   
   /**
-   * Обработка истечения времени на ответ
+   * Обработка истечения времени
    */
   timeOut() {
-    if (this.onTimeOut) {
-      this.onTimeOut();
-    }
+    sharedState.log('Время на ответ истекло', 'info');
     
-    // По умолчанию просто переходим к следующей истории
-    setTimeout(() => {
-      this.nextStory();
-    }, 1000);
+    // Отправляем на сервер, что время истекло
+    this.submitAnswer(null, -1);
   }
   
   /**
-   * Прерывание текущей игры пользователем
+   * Прерывание игры
    */
   abandonGame() {
-    // Создаем транзакцию Sentry для отслеживания прерывания игры
-    const transaction = sentryService.startTransaction({
-      name: 'abandonGame',
-      op: 'game.abandon',
-      data: {
-        currentStoryIndex: this.currentStoryIndex,
-        totalStories: this.gameSession?.stories.length
-      }
-    });
-    
     try {
-      if (this.gameSession && this.gameSession.gameId) {
-        // Отправляем запрос на прерывание игры
-        this.apiService.abandonGame({
-          gameId: this.gameSession.gameId
-        }).catch(error => {
-          sentryService.captureException(error, {
-            tags: {
-              gameAction: 'abandonGame'
-            },
-            level: 'warning'
-          });
+      // Очищаем таймер
+      this.clearTimer();
+      
+      // Если есть активная игра, отправляем запрос на прерывание
+      if (this.gameId) {
+        // Асинхронно отправляем запрос на прерывание игры
+        this.apiService.abandonGame(this.gameId).catch(error => {
+          sharedState.log(`Ошибка при отправке запроса на прерывание игры: ${error.message}`, 'error');
+          sentryService.captureException(error);
         });
-        
-        // Сбрасываем данные игры
-        this.gameSession = null;
-        this.currentStoryIndex = 0;
-        
-        // Устанавливаем статус транзакции как успешную
-        transaction.setStatus('ok');
       }
-    } catch (error) {
-      // Устанавливаем статус транзакции как ошибку и отправляем её в Sentry
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          gameAction: 'abandonGame'
-        },
-        level: 'warning'
+      
+      // Сбрасываем состояние игры
+      this.resetGameState();
+      
+      // Скрываем экран игры
+      sharedState.safelyManipulateDOM('#game-screen', element => {
+        element.classList.add('hidden');
       });
-    } finally {
-      transaction.finish();
+      
+      return true;
+    } catch (error) {
+      sharedState.log(`Ошибка при прерывании игры: ${error.message}`, 'error');
+      sentryService.captureException(error);
+      return false;
     }
   }
 }
 
-// Export as a named export instead of default export
-export { GameService }; 
+// Создаем и экспортируем единственный экземпляр сервиса
+export const gameService = new GameService(); 

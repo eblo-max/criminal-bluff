@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import react from '@vitejs/plugin-react';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   root: './',
+  plugins: [react()],
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
@@ -11,11 +13,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-      },
-      output: {
-        manualChunks: {
-          sentry: ['@sentry/react', '@sentry/browser']
-        }
       }
     },
     sourcemap: true,
