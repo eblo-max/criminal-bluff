@@ -164,7 +164,7 @@ const captureException = (error, { tags = {}, user = null, extra = {}, level = '
   }
 
   try {
-    // Set scope for this specific error
+    // Set scope for this specific exception
     Sentry.withScope(scope => {
       // Add user context if available
       if (user) {
@@ -176,10 +176,10 @@ const captureException = (error, { tags = {}, user = null, extra = {}, level = '
         scope.setTag(key, value);
       });
 
-      // Add extra context
-      Object.entries(extra).forEach(([key, value]) => {
-        scope.setExtra(key, value);
-      });
+      // In Sentry 7.x, extra data should be added as contexts
+      if (Object.keys(extra).length > 0) {
+        scope.setContext('additional', extra);
+      }
 
       // Set error level
       scope.setLevel(level);
@@ -187,8 +187,8 @@ const captureException = (error, { tags = {}, user = null, extra = {}, level = '
       // Send to Sentry
       Sentry.captureException(error);
     });
-  } catch (sentryError) {
-    console.error('Failed to send error to Sentry:', sentryError);
+  } catch (captureError) {
+    console.error('Failed to send error to Sentry:', captureError);
     console.error('Original error:', error);
   }
 };
@@ -196,13 +196,13 @@ const captureException = (error, { tags = {}, user = null, extra = {}, level = '
 /**
  * Отправка сообщения в Sentry
  * @param {String} message - Сообщение
- * @param {String} [level='info'] - Уровень сообщения ('error', 'warning', 'info')
  * @param {Object} [options={}] - Дополнительные опции
  * @param {Object} [options.tags={}] - Теги для категоризации сообщения
  * @param {Object} [options.user=null] - Информация о пользователе
  * @param {Object} [options.extra={}] - Дополнительные данные
+ * @param {String} [options.level='info'] - Уровень сообщения ('error', 'warning', 'info')
  */
-const captureMessage = (message, level = 'info', { tags = {}, user = null, extra = {} } = {}) => {
+const captureMessage = (message, { tags = {}, user = null, extra = {}, level = 'info' } = {}) => {
   if (!process.env.SENTRY_DSN) {
     console.log(`Message captured but Sentry is not configured: [${level}] ${message}`);
     return;
@@ -221,10 +221,10 @@ const captureMessage = (message, level = 'info', { tags = {}, user = null, extra
         scope.setTag(key, value);
       });
 
-      // Add extra context
-      Object.entries(extra).forEach(([key, value]) => {
-        scope.setExtra(key, value);
-      });
+      // In Sentry 7.x, extra data should be added as contexts
+      if (Object.keys(extra).length > 0) {
+        scope.setContext('additional', extra);
+      }
 
       // Set level
       scope.setLevel(level);
@@ -232,8 +232,9 @@ const captureMessage = (message, level = 'info', { tags = {}, user = null, extra
       // Send to Sentry
       Sentry.captureMessage(message);
     });
-  } catch (error) {
-    console.error('Failed to send message to Sentry:', error);
+  } catch (captureError) {
+    console.error('Failed to send message to Sentry:', captureError);
+    console.error('Original message:', message);
   }
 };
 

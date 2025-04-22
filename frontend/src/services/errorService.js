@@ -2,7 +2,6 @@
  * ErrorService - Сервис для обработки и мониторинга ошибок
  */
 import * as Sentry from '@sentry/react';
-import { BrowserTracing } from '@sentry/browser';
 
 class ErrorService {
   /**
@@ -36,17 +35,22 @@ class ErrorService {
         dsn: dsn,
         environment: import.meta.env.VITE_NODE_ENV || 'development',
         release: import.meta.env.VITE_APP_VERSION || '1.0.0',
-        integrations: [
-          // Добавляем интеграции для браузера
-          new BrowserTracing({
-            tracingOrigins: [
-              window.location.origin, 
-              /^https:\/\/api\./, 
-              /^https:\/\/[\w-]+\.railway\.app/
-            ]
-          })
+        
+        // В Sentry 9.x интеграции настраиваются автоматически
+        // Настройка для трассировки запросов
+        tracePropagationTargets: [
+          window.location.origin, 
+          /^https:\/\/api\./, 
+          /^https:\/\/[\w-]+\.railway\.app/
         ],
+        
+        // Настройки для трассировки транзакций
         tracesSampleRate: import.meta.env.VITE_NODE_ENV === 'production' ? 0.2 : 1.0,
+        
+        // Настройки для Session Replay
+        replaysSessionSampleRate: 0.1,
+        replaysOnErrorSampleRate: 1.0,
+        
         beforeSend(event, hint) {
           const error = hint && hint.originalException;
           
@@ -221,6 +225,80 @@ class ErrorService {
       Sentry.captureMessage(message, level);
     } catch (error) {
       console.error('Error sending message to Sentry:', error);
+    }
+  }
+
+  /**
+   * Начинает новую транзакцию для мониторинга производительности
+   * @param {Object} options - Опции транзакции
+   * @param {String} options.name - Название транзакции
+   * @param {String} options.op - Тип операции
+   * @param {Object} [options.data] - Дополнительные данные
+   * @returns {Transaction} - Объект транзакции
+   */
+  startTransaction(options) {
+    if (!this.isInitialized) {
+      console.warn('Sentry не инициализирован. Транзакция не будет отслеживаться.');
+      // Возвращаем заглушку транзакции
+      return {
+        startChild: () => ({ finish: () => {} }),
+        finish: () => {},
+        setStatus: () => {}
+      };
+    }
+
+    try {
+      // Создаем транзакцию с помощью API Sentry 7.x
+      const transaction = Sentry.startTransaction(options);
+      
+      // Устанавливаем текущую транзакцию для автоматического связывания с последующими событиями
+      Sentry.getCurrentHub().configureScope(scope => {
+        scope.setSpan(transaction);
+      });
+      
+      return transaction;
+    } catch (error) {
+      console.error('Error starting transaction:', error);
+      // Возвращаем заглушку транзакции в случае ошибки
+      return {
+        startChild: () => ({ finish: () => {} }),
+        finish: () => {},
+        setStatus: () => {}
+      };
+    }
+  }
+
+  /**
+   * Добавляет метку (тег) ко всем последующим событиям
+   * @param {String} key - Ключ метки
+   * @param {String} value - Значение метки
+   */
+  setTag(key, value) {
+    if (!this.isInitialized) {
+      return;
+    }
+    
+    try {
+      Sentry.setTag(key, value);
+    } catch (error) {
+      console.error('Error setting tag:', error);
+    }
+  }
+
+  /**
+   * Добавляет дополнительный контекст ко всем последующим событиям
+   * @param {String} name - Название контекста
+   * @param {Object} context - Объект с контекстной информацией
+   */
+  setContext(name, context) {
+    if (!this.isInitialized) {
+      return;
+    }
+    
+    try {
+      Sentry.setContext(name, context);
+    } catch (error) {
+      console.error('Error setting context:', error);
     }
   }
 }

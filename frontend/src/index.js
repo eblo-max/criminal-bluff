@@ -1,12 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import * as Sentry from '@sentry/react';
+import { ErrorBoundary } from '@sentry/react';
 import App from './app';
 import './index.css';
 import errorService from './services/errorService';
 
 // Инициализируем errorService
 errorService.init();
+
+// Делаем errorService доступным глобально для обработчиков ошибок
+window.errorService = errorService;
 
 // Добавляем тестовую кнопку для проверки Sentry (только в режиме разработки)
 if (process.env.NODE_ENV === 'development') {
@@ -41,12 +44,23 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Оборачиваем приложение в ErrorBoundary от Sentry
+// Оборачиваем приложение в ErrorBoundary от Sentry через errorService
 ReactDOM.render(
   <React.StrictMode>
-    <Sentry.ErrorBoundary fallback={<p>Произошла ошибка при загрузке приложения. Пожалуйста, обновите страницу.</p>}>
+    <ErrorBoundary 
+      fallback={({error, componentStack, resetError}) => (
+        <div>
+          <h2>Произошла ошибка при загрузке приложения</h2>
+          <p>Пожалуйста, обновите страницу или попробуйте позже.</p>
+          <button onClick={resetError}>Попробовать снова</button>
+        </div>
+      )}
+      beforeCapture={(scope) => {
+        scope.setTag("location", "error-boundary");
+      }}
+    >
       <App />
-    </Sentry.ErrorBoundary>
+    </ErrorBoundary>
   </React.StrictMode>,
   document.getElementById('root')
 );
@@ -103,7 +117,7 @@ import './app.js';
     loadingScreen.style.display = 'flex';
     loadingScreen.style.flexDirection = 'column';
     loadingScreen.style.alignItems = 'center';
-    loadingScreen.style.justifyContent = 'center';
+    loadingScreen.style.justContent = 'center';
     loadingScreen.style.zIndex = '9999';
     
     // Создаем анимацию загрузки

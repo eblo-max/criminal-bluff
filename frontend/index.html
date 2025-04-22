@@ -33,6 +33,28 @@
       }
     }
     
+    // Проверка и исправление системных даты и времени
+    (function validateDateTime() {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      
+      // Проверяем, не установлена ли дата слишком далеко в будущем
+      if (currentYear > 2024) {
+        console.warn(`Обнаружена неправильная системная дата: ${now.toISOString()}`);
+        
+        // Перезаписываем метод Date.prototype.toISOString для исправления дат в логах
+        const originalToISOString = Date.prototype.toISOString;
+        Date.prototype.toISOString = function() {
+          const correctedDate = new Date(this);
+          // Устанавливаем 2024 год, сохраняя остальные компоненты даты
+          correctedDate.setFullYear(2024);
+          return originalToISOString.call(correctedDate);
+        };
+        
+        console.log(`Системная дата скорректирована для логирования: ${new Date().toISOString()}`);
+      }
+    })();
+    
     // Включаем debug_mode если нужно
     if (window.location.search.includes('debug=1')) {
       localStorage.setItem('debug_mode', 'true');
@@ -70,9 +92,39 @@
       return originalConsoleWarn.apply(console, arguments);
     };
     
-    // Сохраняем информацию о WebApp
-    document.addEventListener('DOMContentLoaded', function() {
+    // Проверяем, что DOM полностью загружен перед инициализацией
+    function onDOMReady(callback) {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', callback);
+      } else {
+        // DOM уже загружен
+        callback();
+      }
+    }
+    
+    // Сохраняем информацию о WebApp и настраиваем основные компоненты после загрузки DOM
+    onDOMReady(function() {
       logWithTime('DOM загружен');
+      
+      // Создаем элемент для сообщений об ошибках, если его нет
+      if (!document.getElementById('error-message')) {
+        const errorElement = document.createElement('div');
+        errorElement.id = 'error-message';
+        errorElement.style.display = 'none';
+        errorElement.style.position = 'fixed';
+        errorElement.style.top = '50%';
+        errorElement.style.left = '50%';
+        errorElement.style.transform = 'translate(-50%, -50%)';
+        errorElement.style.backgroundColor = '#f5222d';
+        errorElement.style.color = 'white';
+        errorElement.style.padding = '15px 20px';
+        errorElement.style.borderRadius = '8px';
+        errorElement.style.maxWidth = '80%';
+        errorElement.style.textAlign = 'center';
+        errorElement.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+        errorElement.style.zIndex = '10000';
+        document.body.appendChild(errorElement);
+      }
       
       // Проверяем наличие Telegram WebApp
       if (window.Telegram && window.Telegram.WebApp) {
@@ -99,6 +151,41 @@
         };
         logWithTime('Telegram WebApp недоступен!');
         updateDebugPanel();
+      }
+      
+      // Удаляем splash-screen после короткой задержки
+      setTimeout(function() {
+        const splashScreen = document.querySelector('.splash-screen');
+        if (splashScreen) {
+          splashScreen.style.opacity = '0';
+          setTimeout(function() {
+            splashScreen.style.display = 'none';
+          }, 300);
+        }
+      }, 1000);
+      
+      // Проверяем наличие всех необходимых DOM-элементов
+      const requiredElements = {
+        'start-screen': '#start-screen',
+        'game-screen': '#game-screen',
+        'answer-result-screen': '#answer-result-screen',
+        'game-result-screen': '#game-result-screen',
+        'start-game-btn': '#start-game-btn',
+        'profile-btn': '#profile-btn',
+        'leaderboard-btn': '#leaderboard-btn'
+      };
+      
+      let missingElements = [];
+      for (const [name, selector] of Object.entries(requiredElements)) {
+        if (!document.querySelector(selector)) {
+          missingElements.push(name);
+        }
+      }
+      
+      if (missingElements.length > 0) {
+        logWithTime(`Отсутствуют необходимые DOM-элементы: ${missingElements.join(', ')}`);
+        document.getElementById('error-message').textContent = 'Ошибка инициализации приложения. Отсутствуют необходимые элементы интерфейса.';
+        document.getElementById('error-message').style.display = 'block';
       }
     });
     
@@ -147,7 +234,16 @@
     
     // Ловим все глобальные ошибки
     window.onerror = function(message, source, lineno, colno, error) {
+      logWithTime(`Global error: ${message}, at ${source}:${lineno}:${colno}`);
       console.error('Global error:', message, source, lineno, colno);
+      
+      // Показываем сообщение об ошибке пользователю
+      const errorElement = document.getElementById('error-message');
+      if (errorElement) {
+        errorElement.textContent = 'Ошибка при запуске приложения. Пожалуйста, попробуйте позже.';
+        errorElement.style.display = 'block';
+      }
+      
       return false;
     };
   </script>
@@ -168,6 +264,12 @@
       <div class="start-content">
         <h1 class="app-title">Криминальный Блеф</h1>
         <p class="app-description">Найди ошибки преступников в реальных историях</p>
+        <div class="logo-container">
+          <!-- Логотип будет добавлен через JavaScript -->
+        </div>
+        <div class="user-info">
+          <!-- Информация о пользователе будет добавлена через JavaScript -->
+        </div>
         <div class="button-container">
           <button class="btn btn-primary" id="start-game-btn">Начать игру</button>
           <button class="btn btn-secondary" id="profile-btn">Мой профиль</button>

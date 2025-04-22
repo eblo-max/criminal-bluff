@@ -42,8 +42,9 @@ const errorHandler = (err, req, res, next) => {
       logger.error(err.stack);
     }
     
-    // Отправляем ошибку в Sentry для серьезных ошибок
+    // Send error to Sentry for serious errors
     captureException(err, {
+      // In Sentry 7.x, context data is passed in the same object
       tags: {
         method: req.method,
         url: req.originalUrl
@@ -53,15 +54,17 @@ const errorHandler = (err, req, res, next) => {
         telegramId: req.user.telegramId,
         username: req.user.username
       } : undefined,
-      extra: {
-        query: req.query,
-        params: req.params,
-        // Не отправляем тело запроса, так как оно может содержать чувствительные данные
-        // body: req.body 
+      contexts: {
+        request: {
+          query: req.query,
+          params: req.params,
+          // We don't send request body as it may contain sensitive data
+          // body: req.body 
+        }
       }
     });
   } else {
-    // Для ошибок клиента просто логируем
+    // For client errors just log them
     logger.warn(errorLogMessage);
   }
 

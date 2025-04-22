@@ -6,34 +6,90 @@ class StartScreen {
   constructor(telegramService) {
     this.telegramService = telegramService;
     this.container = document.getElementById('start-screen');
+    
+    // Добавляем проверки на существование контейнера
+    if (!this.container) {
+      console.error('Не найден контейнер #start-screen');
+      return;
+    }
+    
+    // Безопасно получаем элементы, с проверкой на существование
     this.startGameBtn = this.container.querySelector('#start-game-btn');
     this.profileBtn = this.container.querySelector('#profile-btn');
     this.leaderboardBtn = this.container.querySelector('#leaderboard-btn');
     this.logoContainer = this.container.querySelector('.logo-container');
     this.userInfo = this.container.querySelector('.user-info');
+    
+    // Проверяем наличие всех необходимых элементов
+    if (!this.startGameBtn) {
+      console.warn('Не найдена кнопка #start-game-btn');
+    }
+    if (!this.profileBtn) {
+      console.warn('Не найдена кнопка #profile-btn');
+    }
+    if (!this.leaderboardBtn) {
+      console.warn('Не найдена кнопка #leaderboard-btn');
+    }
+    if (!this.logoContainer) {
+      console.warn('Не найден контейнер .logo-container');
+      // Создаем контейнер для логотипа, если он отсутствует
+      this.logoContainer = document.createElement('div');
+      this.logoContainer.className = 'logo-container';
+      this.container.insertBefore(this.logoContainer, this.container.firstChild);
+    }
+    if (!this.userInfo) {
+      console.warn('Не найден элемент .user-info');
+      // Создаем элемент для информации о пользователе, если он отсутствует
+      this.userInfo = document.createElement('div');
+      this.userInfo.className = 'user-info';
+      this.container.appendChild(this.userInfo);
+    }
   }
 
   /**
    * Инициализация стартового экрана
    */
   init() {
-    this.renderLogo();
-    this.renderUserInfo();
-    this.bindEvents();
+    // Проверяем, успешно ли инициализированы все элементы
+    if (!this.container) {
+      console.error('Невозможно инициализировать StartScreen: отсутствует контейнер');
+      return;
+    }
+    
+    try {
+      this.renderLogo();
+      this.renderUserInfo();
+      this.bindEvents();
+      console.log('StartScreen успешно инициализирован');
+    } catch (error) {
+      console.error('Ошибка при инициализации StartScreen:', error);
+    }
   }
 
   /**
    * Рендеринг логотипа игры
    */
   renderLogo() {
-    // Получаем SVG логотип из функции
-    const logoSVG = this.createLogoSVG();
+    // Проверяем наличие контейнера для логотипа
+    if (!this.logoContainer) {
+      console.error('Не удалось отрендерить логотип: отсутствует контейнер');
+      return;
+    }
     
-    // Добавляем логотип в контейнер
-    this.logoContainer.innerHTML = logoSVG;
-    
-    // Анимация логотипа при загрузке
-    this.animateLogo();
+    try {
+      // Получаем SVG логотип из функции
+      const logoSVG = this.createLogoSVG();
+      
+      // Добавляем логотип в контейнер
+      this.logoContainer.innerHTML = logoSVG;
+      
+      // Анимация логотипа при загрузке
+      this.animateLogo();
+    } catch (error) {
+      console.error('Ошибка при рендеринге логотипа:', error);
+      // Резервный вариант логотипа в случае ошибки
+      this.logoContainer.textContent = 'КРИМИНАЛЬНЫЙ БЛЕФ';
+    }
   }
 
   /**
@@ -70,30 +126,38 @@ class StartScreen {
    * Анимация логотипа
    */
   animateLogo() {
-    // Получаем элементы логотипа
-    const logoText = this.container.querySelector('.logo-text');
-    const logoTextShadow = this.container.querySelector('.logo-text-shadow');
+    if (!this.container) return;
     
-    // Применяем анимацию
-    if (logoText && logoTextShadow) {
-      // Сброс стилей для анимации
-      logoText.style.opacity = '0';
-      logoText.style.transform = 'translateY(-20px)';
-      logoTextShadow.style.opacity = '0';
-      logoTextShadow.style.transform = 'translateY(20px)';
+    try {
+      // Получаем элементы логотипа
+      const logoText = this.container.querySelector('.logo-text');
+      const logoTextShadow = this.container.querySelector('.logo-text-shadow');
       
-      // Анимация появления
-      setTimeout(() => {
-        logoText.style.transition = 'all 0.5s ease-out';
-        logoText.style.opacity = '1';
-        logoText.style.transform = 'translateY(0)';
+      // Применяем анимацию
+      if (logoText && logoTextShadow) {
+        // Сброс стилей для анимации
+        logoText.style.opacity = '0';
+        logoText.style.transform = 'translateY(-20px)';
+        logoTextShadow.style.opacity = '0';
+        logoTextShadow.style.transform = 'translateY(20px)';
         
+        // Анимация появления
         setTimeout(() => {
-          logoTextShadow.style.transition = 'all 0.5s ease-out';
-          logoTextShadow.style.opacity = '1';
-          logoTextShadow.style.transform = 'translateY(0)';
-        }, 300);
-      }, 100);
+          logoText.style.transition = 'all 0.5s ease-out';
+          logoText.style.opacity = '1';
+          logoText.style.transform = 'translateY(0)';
+          
+          setTimeout(() => {
+            logoTextShadow.style.transition = 'all 0.5s ease-out';
+            logoTextShadow.style.opacity = '1';
+            logoTextShadow.style.transform = 'translateY(0)';
+          }, 300);
+        }, 100);
+      } else {
+        console.warn('Элементы логотипа не найдены для анимации');
+      }
+    } catch (error) {
+      console.error('Ошибка при анимации логотипа:', error);
     }
   }
 
@@ -101,30 +165,42 @@ class StartScreen {
    * Рендеринг информации о пользователе
    */
   renderUserInfo() {
-    const userData = this.telegramService.getUserInfo();
+    // Проверяем наличие контейнера для информации о пользователе
+    if (!this.userInfo) {
+      console.error('Не удалось отрендерить информацию о пользователе: отсутствует контейнер');
+      return;
+    }
     
-    if (userData) {
-      // Имя пользователя
-      const userName = userData.first_name || userData.username || 'Игрок';
+    try {
+      const userData = this.telegramService ? this.telegramService.getUserInfo() : null;
       
-      // Аватар пользователя
-      const avatarUrl = userData.photo_url || '';
-      
-      // Создаем и добавляем информацию о пользователе
-      this.userInfo.innerHTML = `
-        <div class="user-avatar-container">
-          ${avatarUrl ? `<img src="${avatarUrl}" class="user-avatar" alt="${userName}">` : '<div class="user-avatar-placeholder"></div>'}
-        </div>
-        <div class="user-name">${userName}</div>
-      `;
-    } else {
-      // Если информация пользователя недоступна
-      this.userInfo.innerHTML = `
-        <div class="user-avatar-container">
-          <div class="user-avatar-placeholder"></div>
-        </div>
-        <div class="user-name">Игрок</div>
-      `;
+      if (userData) {
+        // Имя пользователя
+        const userName = userData.first_name || userData.username || 'Игрок';
+        
+        // Аватар пользователя
+        const avatarUrl = userData.photo_url || '';
+        
+        // Создаем и добавляем информацию о пользователе
+        this.userInfo.innerHTML = `
+          <div class="user-avatar-container">
+            ${avatarUrl ? `<img src="${avatarUrl}" class="user-avatar" alt="${userName}">` : '<div class="user-avatar-placeholder"></div>'}
+          </div>
+          <div class="user-name">${userName}</div>
+        `;
+      } else {
+        // Если информация пользователя недоступна
+        this.userInfo.innerHTML = `
+          <div class="user-avatar-container">
+            <div class="user-avatar-placeholder"></div>
+          </div>
+          <div class="user-name">Игрок</div>
+        `;
+      }
+    } catch (error) {
+      console.error('Ошибка при рендеринге информации о пользователе:', error);
+      // Резервный вариант в случае ошибки
+      this.userInfo.textContent = 'Игрок';
     }
   }
 
@@ -132,21 +208,32 @@ class StartScreen {
    * Привязка обработчиков событий
    */
   bindEvents() {
-    // Событие нажатия на кнопку "Начать игру"
-    this.startGameBtn.addEventListener('click', () => {
-      // Обработка будет происходить на уровне выше
-      this.container.dispatchEvent(new CustomEvent('startGame'));
-    });
-    
-    // Событие нажатия на кнопку "Профиль"
-    this.profileBtn.addEventListener('click', () => {
-      this.container.dispatchEvent(new CustomEvent('showProfile'));
-    });
-    
-    // Событие нажатия на кнопку "Рейтинг"
-    this.leaderboardBtn.addEventListener('click', () => {
-      this.container.dispatchEvent(new CustomEvent('showLeaderboard'));
-    });
+    try {
+      // Проверяем наличие всех необходимых элементов перед привязкой событий
+      if (this.startGameBtn) {
+        // Событие нажатия на кнопку "Начать игру"
+        this.startGameBtn.addEventListener('click', () => {
+          // Обработка будет происходить на уровне выше
+          this.container.dispatchEvent(new CustomEvent('startGame'));
+        });
+      }
+      
+      if (this.profileBtn) {
+        // Событие нажатия на кнопку "Профиль"
+        this.profileBtn.addEventListener('click', () => {
+          this.container.dispatchEvent(new CustomEvent('showProfile'));
+        });
+      }
+      
+      if (this.leaderboardBtn) {
+        // Событие нажатия на кнопку "Рейтинг"
+        this.leaderboardBtn.addEventListener('click', () => {
+          this.container.dispatchEvent(new CustomEvent('showLeaderboard'));
+        });
+      }
+    } catch (error) {
+      console.error('Ошибка при привязке событий:', error);
+    }
   }
   
   /**
@@ -154,10 +241,16 @@ class StartScreen {
    * @param {Boolean} enabled - Включить или выключить эффект
    */
   setPulseEffect(enabled) {
-    if (enabled) {
-      this.startGameBtn.classList.add('pulse-animation');
-    } else {
-      this.startGameBtn.classList.remove('pulse-animation');
+    if (!this.startGameBtn) return;
+    
+    try {
+      if (enabled) {
+        this.startGameBtn.classList.add('pulse-animation');
+      } else {
+        this.startGameBtn.classList.remove('pulse-animation');
+      }
+    } catch (error) {
+      console.error('Ошибка при установке эффекта пульсации:', error);
     }
   }
 }

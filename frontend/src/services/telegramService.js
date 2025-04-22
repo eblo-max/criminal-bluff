@@ -2,6 +2,71 @@
  * Telegram Service
  * Сервис для взаимодействия с API Telegram Mini Apps
  */
+
+// Singleton для хранения и предотвращения повторной инициализации
+let _instance = null;
+let _telegramUser = null;
+let _telegramInitialized = false;
+
+/**
+ * Инициализация Telegram WebApp
+ * @returns {Promise<boolean>} - Результат инициализации
+ */
+export async function initTelegram() {
+  try {
+    // Если уже инициализирован, возвращаем положительный результат
+    if (_telegramInitialized) {
+      console.log('Telegram WebApp уже был инициализирован ранее');
+      return true;
+    }
+    
+    // Создаем экземпляр сервиса, если он еще не был создан
+    if (!_instance) {
+      _instance = new TelegramService();
+    }
+    
+    // Выполняем инициализацию
+    const result = await _instance.init();
+    
+    if (result) {
+      // Сохраняем пользователя после успешной инициализации
+      _telegramUser = _instance.user;
+      _telegramInitialized = true;
+      
+      console.log('Telegram WebApp успешно инициализирован');
+      return true;
+    }
+    
+    console.error('Не удалось инициализировать Telegram WebApp');
+    return false;
+  } catch (error) {
+    console.error('Ошибка при инициализации Telegram WebApp:', error);
+    return false;
+  }
+}
+
+/**
+ * Получение данных пользователя Telegram
+ * @returns {Object|null} - Объект с данными пользователя или null
+ */
+export function getTelegramUser() {
+  // Если инициализация не была выполнена, возвращаем null
+  if (!_telegramInitialized) {
+    console.warn('Попытка получить пользователя Telegram до инициализации');
+    return null;
+  }
+  
+  return _telegramUser;
+}
+
+/**
+ * Получение экземпляра сервиса Telegram
+ * @returns {TelegramService|null} - Экземпляр TelegramService или null
+ */
+export function getTelegramService() {
+  return _instance;
+}
+
 export class TelegramService {
   constructor() {
     // Telegram WebApp объект
@@ -213,40 +278,46 @@ export class TelegramService {
    */
   _logDebugInfo(message) {
     try {
-      // Добавляем запись в HTML элемент для отладки
+      // Сначала логируем в консоль всегда
+      console.log(`[DEBUG] ${message}`);
+      
+      // Добавляем запись в HTML элемент для отладки только если он существует
       const debugElement = document.getElementById('debug-output');
       if (debugElement) {
         const timestamp = new Date().toISOString();
         const logItem = document.createElement('div');
-        logItem.innerHTML = `• ${timestamp}: ${message}`;
+        logItem.textContent = `• ${timestamp}: ${message}`;
         logItem.style.color = 'lime';
         logItem.style.fontSize = '12px';
         logItem.style.marginBottom = '4px';
         debugElement.appendChild(logItem);
       }
       
-      // Добавляем запись в localStorage для последующего анализа
-      let logs = [];
+      // Сохраняем логи в localStorage
       try {
+        // Получаем существующие логи
+        let logs = [];
         const savedLogs = localStorage.getItem('debug_logs');
         if (savedLogs) {
           logs = JSON.parse(savedLogs);
         }
-      } catch (e) {
-        logs = [];
+        
+        // Добавляем новую запись
+        logs.push({
+          time: new Date().toISOString(),
+          message: message
+        });
+        
+        // Ограничиваем количество логов
+        if (logs.length > 50) {
+          logs = logs.slice(logs.length - 50);
+        }
+        
+        // Сохраняем обновленные логи
+        localStorage.setItem('debug_logs', JSON.stringify(logs));
+      } catch (storerError) {
+        console.warn('Не удалось сохранить логи в localStorage:', storerError);
       }
-      
-      logs.push({
-        time: new Date().toISOString(),
-        message: message
-      });
-      
-      // Ограничиваем количество логов
-      if (logs.length > 50) {
-        logs = logs.slice(logs.length - 50);
-      }
-      
-      localStorage.setItem('debug_logs', JSON.stringify(logs));
     } catch (error) {
       console.error('Ошибка при логировании:', error);
     }
@@ -364,85 +435,100 @@ export class TelegramService {
    * @private
    */
   _createDebugPanel() {
-    // Проверяем, существует ли уже панель
-    if (document.getElementById('debug-panel')) {
-      return;
-    }
-    
-    // Создаем элементы отладочной панели
-    const debugPanel = document.createElement('div');
-    debugPanel.id = 'debug-panel';
-    debugPanel.style.position = 'fixed';
-    debugPanel.style.bottom = '0';
-    debugPanel.style.left = '0';
-    debugPanel.style.right = '0';
-    debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-    debugPanel.style.color = 'lime';
-    debugPanel.style.fontSize = '12px';
-    debugPanel.style.padding = '10px';
-    debugPanel.style.maxHeight = '200px';
-    debugPanel.style.overflow = 'auto';
-    debugPanel.style.zIndex = '9999';
-    debugPanel.style.borderTop = '1px solid lime';
-    
-    // Создаем заголовок
-    const header = document.createElement('div');
-    header.innerHTML = `• Версия: ${window.appVersion || '1.0'}`;
-    header.style.marginBottom = '5px';
-    debugPanel.appendChild(header);
-    
-    // Платформа
-    const platform = document.createElement('div');
-    platform.innerHTML = `• Платформа: ${window.Telegram?.WebApp?.platform || 'tdesktop'}`;
-    debugPanel.appendChild(platform);
-    
-    // Размер экрана
-    const viewport = document.createElement('div');
-    viewport.innerHTML = `• Viewport высота: ${window.innerHeight}px`;
-    debugPanel.appendChild(viewport);
-    
-    // initData
-    const initData = document.createElement('div');
-    initData.innerHTML = `• InitData: ${this.initData ? this.initData.substring(0, 50) + '...' : 'нет'}`;
-    debugPanel.appendChild(initData);
-    
-    // Контейнер для логов
-    const logContainer = document.createElement('div');
-    logContainer.id = 'debug-output';
-    logContainer.style.marginTop = '10px';
-    debugPanel.appendChild(logContainer);
-    
-    // Кнопка для скрытия/показа панели
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Скрыть';
-    toggleButton.style.position = 'absolute';
-    toggleButton.style.top = '5px';
-    toggleButton.style.right = '5px';
-    toggleButton.style.background = 'transparent';
-    toggleButton.style.border = '1px solid lime';
-    toggleButton.style.color = 'lime';
-    toggleButton.style.padding = '3px 6px';
-    toggleButton.style.borderRadius = '3px';
-    toggleButton.style.fontSize = '10px';
-    
-    let isPanelVisible = true;
-    toggleButton.addEventListener('click', () => {
-      if (isPanelVisible) {
-        logContainer.style.display = 'none';
-        debugPanel.style.maxHeight = '30px';
-        toggleButton.textContent = 'Показать';
-      } else {
-        logContainer.style.display = 'block';
-        debugPanel.style.maxHeight = '200px';
-        toggleButton.textContent = 'Скрыть';
+    try {
+      // Проверяем валидность DOM
+      if (!document || !document.body) {
+        console.warn('DOM не готов для создания отладочной панели');
+        return false;
       }
-      isPanelVisible = !isPanelVisible;
-    });
-    
-    debugPanel.appendChild(toggleButton);
-    
-    // Добавляем панель в DOM
-    document.body.appendChild(debugPanel);
+      
+      // Проверяем, существует ли уже панель
+      if (document.getElementById('debug-panel')) {
+        return true;
+      }
+      
+      // Создаем элементы отладочной панели
+      const debugPanel = document.createElement('div');
+      debugPanel.id = 'debug-panel';
+      debugPanel.style.position = 'fixed';
+      debugPanel.style.bottom = '0';
+      debugPanel.style.left = '0';
+      debugPanel.style.right = '0';
+      debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+      debugPanel.style.color = 'lime';
+      debugPanel.style.fontSize = '12px';
+      debugPanel.style.padding = '10px';
+      debugPanel.style.maxHeight = '200px';
+      debugPanel.style.overflow = 'auto';
+      debugPanel.style.zIndex = '9999';
+      debugPanel.style.borderTop = '1px solid lime';
+      
+      // Создаем заголовок
+      const header = document.createElement('div');
+      header.textContent = `• Версия: ${window.appVersion || '1.0'}`;
+      header.style.marginBottom = '5px';
+      debugPanel.appendChild(header);
+      
+      // Платформа
+      const platform = document.createElement('div');
+      platform.textContent = `• Платформа: ${window.Telegram?.WebApp?.platform || 'tdesktop'}`;
+      debugPanel.appendChild(platform);
+      
+      // Размер экрана
+      const viewport = document.createElement('div');
+      viewport.textContent = `• Viewport высота: ${window.innerHeight}px`;
+      debugPanel.appendChild(viewport);
+      
+      // initData
+      const initData = document.createElement('div');
+      const initDataText = this.initData ? 
+        this.initData.substring(0, 50) + '...' : 
+        'нет';
+      initData.textContent = `• InitData: ${initDataText}`;
+      debugPanel.appendChild(initData);
+      
+      // Контейнер для логов
+      const logContainer = document.createElement('div');
+      logContainer.id = 'debug-output';
+      logContainer.style.marginTop = '10px';
+      debugPanel.appendChild(logContainer);
+      
+      // Кнопка для скрытия/показа панели
+      const toggleButton = document.createElement('button');
+      toggleButton.textContent = 'Скрыть';
+      toggleButton.style.position = 'absolute';
+      toggleButton.style.top = '5px';
+      toggleButton.style.right = '5px';
+      toggleButton.style.background = 'transparent';
+      toggleButton.style.border = '1px solid lime';
+      toggleButton.style.color = 'lime';
+      toggleButton.style.padding = '3px 6px';
+      toggleButton.style.borderRadius = '3px';
+      toggleButton.style.fontSize = '10px';
+      
+      let isPanelVisible = true;
+      toggleButton.addEventListener('click', () => {
+        if (isPanelVisible) {
+          logContainer.style.display = 'none';
+          debugPanel.style.maxHeight = '30px';
+          toggleButton.textContent = 'Показать';
+        } else {
+          logContainer.style.display = 'block';
+          debugPanel.style.maxHeight = '200px';
+          toggleButton.textContent = 'Скрыть';
+        }
+        isPanelVisible = !isPanelVisible;
+      });
+      
+      debugPanel.appendChild(toggleButton);
+      
+      // Добавляем панель в DOM
+      document.body.appendChild(debugPanel);
+      return true;
+    } catch (error) {
+      console.error('Ошибка при создании отладочной панели:', error);
+      return false;
+    }
   }
   
   /**

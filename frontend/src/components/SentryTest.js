@@ -2,6 +2,7 @@
  * SentryTest - Компонент для тестирования функциональности Sentry
  */
 import errorService from '../services/errorService.js';
+import * as Sentry from '@sentry/react';
 
 class SentryTest {
   constructor() {
@@ -107,11 +108,13 @@ class SentryTest {
 
     // Тест транзакций
     document.getElementById('test-transaction').addEventListener('click', () => {
-      const transaction = errorService.startTransaction({
+      // В Sentry 9.x API немного изменился
+      // Создаем транзакцию
+      const transaction = Sentry.startTransaction({
         name: 'test.transaction',
         op: 'test'
       });
-
+      
       this.logTestResult('Транзакция запущена...');
       
       // Имитируем асинхронную работу
