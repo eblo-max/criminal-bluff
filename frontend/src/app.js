@@ -8,7 +8,7 @@ import { ApiService } from './services/apiService.js';
 import { GameService } from './services/gameService.js';
 import { UiService } from './services/uiService.js';
 import { TelegramService, initTelegram, getTelegramUser } from './services/telegramService.js';
-import errorService from './services/errorService.js';
+import * as sentryService from './services/sentryService.js';
 
 // Импорт компонентов
 import StartScreen from './components/StartScreen.js';
@@ -41,7 +41,7 @@ class App {
     // Инициализируем приложение только после полной загрузки DOM
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => this.init());
-    } else {
+      } else {
       // DOM уже загружен
       this.init();
     }
@@ -57,8 +57,8 @@ class App {
         throw new Error('Ошибка: Не найден контейнер приложения #app');
       }
 
-      // Инициализируем Sentry для отслеживания ошибок через errorService
-      errorService.init();
+      // Инициализируем Sentry для отслеживания ошибок
+      sentryService.initSentry(); // Используем sentryService как единственный сервис мониторинга
       
       // Инициализируем Telegram WebApp
       initTelegram()
@@ -67,7 +67,7 @@ class App {
           // Обновляем контекст пользователя Telegram в Sentry
           const telegramUser = getTelegramUser();
           if (telegramUser) {
-            errorService.setUser(telegramUser);
+            sentryService.setUserContext(telegramUser);
           }
           
           this.initScreens();
@@ -76,15 +76,15 @@ class App {
           // Показываем стартовый экран
           this.showScreen('start');
           this.isStarted = true;
-        })
-        .catch(error => {
+    })
+    .catch(error => {
           console.error('Ошибка при инициализации Telegram WebApp:', error);
-          errorService.captureException(error);
+          sentryService.captureException(error);
           this.showErrorMessage('Не удалось инициализировать Telegram WebApp. Пожалуйста, попробуйте позже.');
         });
     } catch (error) {
       console.error('Критическая ошибка при инициализации приложения:', error);
-      errorService.captureException(error);
+      sentryService.captureException(error);
       this.showErrorMessage('Критическая ошибка при запуске приложения.');
     }
   }
@@ -113,7 +113,7 @@ class App {
       console.log('Все экраны успешно инициализированы');
     } catch (error) {
       console.error('Ошибка при инициализации экранов:', error);
-      errorService.captureException(error);
+      sentryService.captureException(error);
       this.showErrorMessage('Ошибка при инициализации интерфейса приложения.');
     }
   }
@@ -158,7 +158,7 @@ class App {
       console.log(`Показан экран: ${screenName}`);
     } catch (error) {
       console.error(`Ошибка при показе экрана ${screenName}:`, error);
-      errorService.captureException(error);
+      sentryService.captureException(error);
       this.showErrorMessage('Ошибка при переключении экрана.');
     }
   }
@@ -200,6 +200,7 @@ class App {
     } catch (err) {
       // В случае ошибки при отображении ошибки, логируем это в консоль
       console.error('Не удалось отобразить сообщение об ошибке:', err);
+      sentryService.captureException(err);
     }
   }
 }

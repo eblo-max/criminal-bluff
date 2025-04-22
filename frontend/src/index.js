@@ -3,13 +3,10 @@ import ReactDOM from 'react-dom';
 import { ErrorBoundary } from '@sentry/react';
 import App from './app';
 import './index.css';
-import errorService from './services/errorService';
+import * as sentryService from './services/sentryService';
 
-// Инициализируем errorService
-errorService.init();
-
-// Делаем errorService доступным глобально для обработчиков ошибок
-window.errorService = errorService;
+// Делаем sentryService доступным глобально для обработчиков ошибок
+window.sentryService = sentryService;
 
 // Добавляем тестовую кнопку для проверки Sentry (только в режиме разработки)
 if (process.env.NODE_ENV === 'development') {
@@ -30,7 +27,7 @@ if (process.env.NODE_ENV === 'development') {
       try {
         throw new Error('This is a test error from Criminal Bluff app!');
       } catch (error) {
-        errorService.captureException(error, {
+        sentryService.captureException(error, {
           tags: {
             testError: true,
             source: 'test-button'
@@ -44,7 +41,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
-// Оборачиваем приложение в ErrorBoundary от Sentry через errorService
+// Оборачиваем приложение в ErrorBoundary от Sentry
 ReactDOM.render(
   <React.StrictMode>
     <ErrorBoundary 
@@ -168,8 +165,8 @@ import './app.js';
     }
     
     // Если определена глобальная функция отправки ошибок в Sentry
-    if (window.errorService) {
-      window.errorService.captureException(error || new Error(message));
+    if (window.sentryService) {
+      window.sentryService.captureException(error || new Error(message));
     }
     
     return false; // Позволяет выполнить стандартную обработку ошибок браузера
@@ -192,8 +189,8 @@ import './app.js';
     }
     
     // Если определена глобальная функция отправки ошибок в Sentry
-    if (window.errorService) {
-      window.errorService.captureException(event.reason);
+    if (window.sentryService) {
+      window.sentryService.captureException(event.reason);
     }
   });
   

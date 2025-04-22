@@ -3,15 +3,15 @@
  */
 
 import * as Sentry from '@sentry/browser';
-import { BrowserTracing, Replay } from '@sentry/browser';
+import { browserTracingIntegration, replayIntegration } from '@sentry/browser';
 
 // Конфигурация Sentry
-const SENTRY_DSN = process.env.REACT_APP_SENTRY_DSN || 'https://your-sentry-dsn-here@sentry.io/project-id';
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN || 'https://a5291ea1ed611f0a45522c403b23981@o4509192317370448.ingest.sentry.io/4509192317731328';
 
-// Инициализация Sentry с настройками для версии 7.x
+// Инициализация Sentry с настройками для версии 9.x
 export function initSentry() {
   // Не инициализируем Sentry в режиме разработки если не задан DSN
-  if (process.env.NODE_ENV === 'development' && !process.env.REACT_APP_SENTRY_DSN) {
+  if (import.meta.env.DEV && !import.meta.env.VITE_SENTRY_DSN) {
     console.warn('Sentry не инициализирован в режиме разработки (не задан DSN)');
     return;
   }
@@ -20,14 +20,14 @@ export function initSentry() {
     Sentry.init({
       dsn: SENTRY_DSN,
       integrations: [
-        new BrowserTracing({
+        browserTracingIntegration({
           tracePropagationTargets: [
             'localhost',
             /^\//,
-            /^https:\/\/your-api-domain\.com/ // Замените на ваш домен API
+            'asata-1w.sentry.io'
           ],
         }),
-        new Replay({
+        replayIntegration({
           // Настройки для записи сессий
           maskAllText: true,
           blockAllMedia: true,
@@ -35,7 +35,7 @@ export function initSentry() {
       ],
       
       // Настройки для трассировки производительности
-      tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
+      tracesSampleRate: import.meta.env.PROD ? 0.2 : 1.0,
       
       // Настройки для записи сессий
       replaysSessionSampleRate: 0.1, // Записывать 10% сессий 
@@ -45,12 +45,15 @@ export function initSentry() {
       release: window.appVersion || '1.0.0',
       
       // Окружение (разработка/продакшн)
-      environment: process.env.NODE_ENV,
+      environment: import.meta.env.MODE,
+      
+      // Ключ безопасности
+      authToken: 'a5291ea1ed611f0a45522c403b23981',
       
       // Обработка данных перед отправкой
       beforeSend: (event, hint) => {
         // Не отправляем ошибки в режиме разработки (если не включен отладочный режим)
-        if (process.env.NODE_ENV === 'development' && !window.debugMode) {
+        if (import.meta.env.DEV && !window.debugMode) {
           console.warn('Ошибка перехвачена Sentry (не отправлена в режиме разработки):', hint.originalException || hint.syntheticException);
           return null;
         }
@@ -75,7 +78,7 @@ export function initSentry() {
     });
 
     // Установка пользовательского контекста, если пользователь авторизован
-    const user = window.telegramUser || JSON.parse(localStorage.getItem('user'));
+    const user = window.telegramUser || JSON.parse(localStorage.getItem('user') || '{}');
     if (user && user.id) {
       Sentry.setUser({
         id: user.id,
@@ -100,9 +103,9 @@ export function captureException(error, context = {}) {
 
   // Если Sentry не инициализирован или мы в режиме разработки без явной отладки, только логируем
   if (
-    process.env.NODE_ENV === 'development' && 
+    import.meta.env.DEV && 
     !window.debugMode &&
-    !process.env.REACT_APP_SENTRY_DSN
+    !import.meta.env.VITE_SENTRY_DSN
   ) {
     return;
   }
@@ -133,9 +136,9 @@ export function captureException(error, context = {}) {
 export function captureMessage(message, options = {}) {
   // Если Sentry не инициализирован или мы в режиме разработки без явной отладки, только логируем
   if (
-    process.env.NODE_ENV === 'development' && 
+    import.meta.env.DEV && 
     !window.debugMode &&
-    !process.env.REACT_APP_SENTRY_DSN
+    !import.meta.env.VITE_SENTRY_DSN
   ) {
     console.log('Сообщение Sentry (не отправлено в режиме разработки):', message);
     return;
@@ -171,6 +174,41 @@ export function setUserContext(user) {
 }
 
 /**
+ * Начинает новую транзакцию для мониторинга производительности
+ * @param {Object} options - Опции транзакции
+ * @param {String} options.name - Название транзакции
+ * @param {String} options.op - Тип операции
+ * @param {Object} [options.data] - Дополнительные данные
+ * @returns {Transaction} - Объект транзакции
+ */
+export function startTransaction(options) {
+  try {
+    // Создаем транзакцию в соответствии с API Sentry 9.x
+    const transaction = Sentry.startTransaction({
+      name: options.name,
+      op: options.op,
+      data: options.data || {},
+    });
+    
+    // Устанавливаем текущую транзакцию используя getCurrentHub().configureScope
+    // для совместимости с Sentry 9.x
+    Sentry.getCurrentHub().configureScope(scope => {
+      scope.setSpan(transaction);
+    });
+    
+    return transaction;
+  } catch (error) {
+    console.error('Error starting transaction:', error);
+    // Возвращаем заглушку транзакции в случае ошибки
+    return {
+      startChild: () => ({ finish: () => {} }),
+      finish: () => {},
+      setStatus: () => {}
+    };
+  }
+}
+
+/**
  * Добавляет метку (тег) к событиям Sentry
  * @param {string} key - Ключ метки
  * @param {string} value - Значение метки
@@ -180,6 +218,19 @@ export function setTag(key, value) {
     Sentry.setTag(key, value);
   } catch (err) {
     console.error('Ошибка при установке тега в Sentry:', err);
+  }
+}
+
+/**
+ * Добавляет контекстную информацию к событиям Sentry
+ * @param {string} name - Имя контекста
+ * @param {object} context - Объект контекста
+ */
+export function setContext(name, context) {
+  try {
+    Sentry.setContext(name, context);
+  } catch (err) {
+    console.error('Ошибка при установке контекста в Sentry:', err);
   }
 }
 
