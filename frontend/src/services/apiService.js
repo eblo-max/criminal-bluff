@@ -2,7 +2,6 @@
  * API Service
  * Сервис для взаимодействия с бэкэндом
  */
-import { sentryService } from './sentryService';
 
 export class ApiService {
   constructor() {
@@ -23,16 +22,6 @@ export class ApiService {
    * @returns {Promise<any>} - результат запроса
    */
   async fetchData(endpoint, method = 'GET', data = null) {
-    const transaction = sentryService.startTransaction({
-      name: `${method} ${endpoint}`,
-      op: 'http.client',
-      data: { 
-        endpoint,
-        method,
-        data 
-      }
-    });
-
     try {
       const url = `${this.baseUrl}${endpoint}`;
       
@@ -78,31 +67,16 @@ export class ApiService {
         throw new Error(errorData.message || 'Ошибка при обращении к API');
       }
       
-      // Устанавливаем статус транзакции
-      transaction.setStatus('ok');
-      transaction.setData({
-        status: response.status,
-        success: true
-      });
-      
       return await response.json();
     } catch (error) {
       // Ошибка во время запроса
-      transaction.setStatus('internal_error');
-      sentryService.captureException(error, {
-        tags: {
-          endpoint,
-          method
-        }
-      });
+      console.error(`API Error (${method} ${endpoint}):`, error);
       
       // Возвращаем стандартизированный объект ошибки
       return {
         success: false,
         message: error.message || 'Произошла ошибка при выполнении запроса'
       };
-    } finally {
-      transaction.finish();
     }
   }
   
@@ -144,25 +118,27 @@ export class ApiService {
    * @returns {Promise<Object>} - данные игровой сессии
    */
   async startGame() {
-    return this.fetchData('/game/start');
+    return this.fetchData('/game/start', 'POST');
   }
   
   /**
    * Отправка ответа
+   * @param {string} gameId - ID игры
    * @param {Object} answerData - данные ответа
    * @returns {Promise<Object>} - результат ответа
    */
-  async submitAnswer(answerData) {
-    return this.fetchData('/game/answer', 'POST', answerData);
+  async submitAnswer(gameId, answerData) {
+    return this.fetchData(`/game/${gameId}/answer`, 'POST', answerData);
   }
   
   /**
    * Завершение игры
-   * @param {Object} gameData - данные завершённой игры
+   * @param {string} gameId - ID игры
+   * @param {Array} answers - массив ответов
    * @returns {Promise<Object>} - результаты игры
    */
-  async finishGame(gameData) {
-    return this.fetchData('/game/finish', 'POST', gameData);
+  async finishGame(gameId, answers) {
+    return this.fetchData(`/game/${gameId}/finish`, 'POST', { answers });
   }
   
   /**
@@ -175,47 +151,46 @@ export class ApiService {
   
   /**
    * Прерывание игры пользователем
-   * @param {Object} gameData - данные игры для прерывания
+   * @param {string} gameId - ID игры для прерывания
    * @returns {Promise<Object>} - результат прерывания
    */
-  async abandonGame(gameData) {
-    return this.fetchData('/game/abandon', 'POST', gameData);
+  async abandonGame(gameId) {
+    return this.fetchData(`/game/${gameId}/abandon`, 'POST');
   }
   
   /**
    * Получение таблицы лидеров
    * @param {string} period - период ('daily', 'weekly', 'all-time')
-   * @returns {Promise<Array>} - данные таблицы лидеров
+   * @param {number} page - номер страницы
+   * @param {number} limit - количество записей на странице
+   * @returns {Promise<Object>} - данные таблицы лидеров
    */
-  async getLeaderboard(period = 'daily') {
-    return this.fetchData(`/leaderboard/${period}`);
+  async getLeaderboard(period = 'all-time', page = 1, limit = 10) {
+    return this.fetchData(`/leaderboard/${period}?page=${page}&limit=${limit}`);
   }
   
   /**
    * Получение позиции пользователя в таблице лидеров
    * @param {string} period - период ('daily', 'weekly', 'all-time')
-   * @returns {Promise<number>} - позиция пользователя
+   * @returns {Promise<Object>} - информация о позиции пользователя
    */
   async getUserPosition(period = 'all-time') {
-    return this.fetchData('/leaderboard/user-position', 'GET', { period });
+    return this.fetchData(`/leaderboard/position/${period}`);
   }
   
   /**
-   * Получение соседей пользователя в рейтинге
-   * @param {number} range - количество соседей сверху и снизу (по умолчанию 5)
-   * @returns {Promise<Object>} - список соседей и позиция пользователя
+   * Получение соседей пользователя в таблице лидеров
+   * @param {string} period - период ('daily', 'weekly', 'all-time')
+   * @param {number} range - количество соседей сверху и снизу
+   * @returns {Promise<Object>} - соседи в таблице лидеров
    */
-  async getUserNeighbors(range = 5) {
-    return this.fetchData(`/leaderboard/user-neighbors?range=${range}`);
+  async getUserNeighbors(period = 'all-time', range = 2) {
+    return this.fetchData(`/leaderboard/neighbors/${period}?range=${range}`);
   }
-
+  
   /**
-   * Методы для административной панели
-   */
-
-  /**
-   * Получение данных для дашборда администратора
-   * @returns {Promise<Object>} - данные дашборда
+   * Получение данных для админской панели
+   * @returns {Promise<Object>} - данные для админской панели
    */
   async getAdminDashboard() {
     return this.fetchData('/admin/dashboard');
@@ -225,17 +200,17 @@ export class ApiService {
    * Получение списка историй
    * @param {number} page - номер страницы
    * @param {number} limit - количество историй на странице
-   * @param {Object} filters - фильтры (difficulty, category, search)
-   * @returns {Promise<Object>} - список историй и пагинация
+   * @param {Object} filters - фильтры
+   * @returns {Promise<Array>} - список историй
    */
   async getStories(page = 1, limit = 20, filters = {}) {
     const queryParams = new URLSearchParams({
       page,
       limit,
       ...filters
-    });
+    }).toString();
     
-    return this.fetchData(`/admin/stories?${queryParams.toString()}`);
+    return this.fetchData(`/admin/stories?${queryParams}`);
   }
   
   /**
@@ -248,9 +223,9 @@ export class ApiService {
   }
   
   /**
-   * Получение информации об истории
+   * Получение истории по ID
    * @param {string} id - ID истории
-   * @returns {Promise<Object>} - информация об истории
+   * @returns {Promise<Object>} - история
    */
   async getStoryById(id) {
     return this.fetchData(`/admin/stories/${id}`);
@@ -259,8 +234,8 @@ export class ApiService {
   /**
    * Обновление истории
    * @param {string} id - ID истории
-   * @param {Object} storyData - новые данные истории
-   * @returns {Promise<Object>} - обновленная история
+   * @param {Object} storyData - новые данные
+   * @returns {Promise<Object>} - обновлённая история
    */
   async updateStory(id, storyData) {
     return this.fetchData(`/admin/stories/${id}`, 'PUT', storyData);
@@ -279,23 +254,23 @@ export class ApiService {
    * Получение списка пользователей
    * @param {number} page - номер страницы
    * @param {number} limit - количество пользователей на странице
-   * @param {Object} filters - фильтры (search)
-   * @returns {Promise<Object>} - список пользователей и пагинация
+   * @param {Object} filters - фильтры
+   * @returns {Promise<Array>} - список пользователей
    */
   async getUsers(page = 1, limit = 20, filters = {}) {
     const queryParams = new URLSearchParams({
       page,
       limit,
       ...filters
-    });
+    }).toString();
     
-    return this.fetchData(`/admin/users?${queryParams.toString()}`);
+    return this.fetchData(`/admin/users?${queryParams}`);
   }
   
   /**
-   * Получение информации о пользователе
+   * Получение пользователя по ID
    * @param {string} id - ID пользователя
-   * @returns {Promise<Object>} - информация о пользователе
+   * @returns {Promise<Object>} - пользователь
    */
   async getUserById(id) {
     return this.fetchData(`/admin/users/${id}`);
@@ -304,21 +279,23 @@ export class ApiService {
   /**
    * Обновление пользователя
    * @param {string} id - ID пользователя
-   * @param {Object} userData - новые данные пользователя
-   * @returns {Promise<Object>} - обновленный пользователь
+   * @param {Object} userData - новые данные
+   * @returns {Promise<Object>} - обновлённый пользователь
    */
   async updateUser(id, userData) {
     return this.fetchData(`/admin/users/${id}`, 'PUT', userData);
   }
   
   /**
-   * Получение общей статистики системы
-   * @returns {Promise<Object>} - общая статистика
+   * Получение системной статистики
+   * @returns {Promise<Object>} - системная статистика
    */
   async getSystemStats() {
     return this.fetchData('/admin/stats');
   }
 }
 
-// Экспортируем единственный экземпляр сервиса
-export const apiService = new ApiService(); 
+// Создаём экземпляр сервиса для использования во всём приложении
+export const apiService = new ApiService();
+
+export default apiService; 

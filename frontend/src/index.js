@@ -2,16 +2,12 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './app.jsx';
 import './index.css';
-import { sentryService } from './services/sentryService';
 import { sharedState } from './services/common';
 
 // Глобальные обработчики ошибок
 window.onerror = function(message, source, lineno, colno, error) {
   console.error('Глобальная ошибка:', message, error);
   sharedState.showErrorMessage(`Произошла ошибка: ${message}`);
-  
-  // Также отправляем ошибку в логирование
-  sentryService.captureException(error || new Error(message));
   
   return true; // предотвращаем дальнейшую обработку ошибки
 };
@@ -20,9 +16,6 @@ window.onerror = function(message, source, lineno, colno, error) {
 window.addEventListener('unhandledrejection', function(event) {
   console.error('Необработанный промис:', event.reason);
   sharedState.showErrorMessage(`Необработанная ошибка промиса: ${event.reason?.message || 'Неизвестная ошибка'}`);
-  
-  // Также отправляем ошибку в логирование
-  sentryService.captureException(event.reason || new Error('Unhandled promise rejection'));
 });
 
 // Создаем загрузочный экран до инициализации React
@@ -113,7 +106,6 @@ function safeRenderApp() {
   } catch (error) {
     console.error('Ошибка при рендеринге React-приложения:', error);
     sharedState.showErrorMessage(`Не удалось запустить приложение: ${error.message}`);
-    sentryService.captureException(error);
   }
 }
 
@@ -197,7 +189,6 @@ function initializeApp() {
   } catch (error) {
     console.error('Критическая ошибка при инициализации приложения:', error);
     sharedState.showErrorMessage(`Критическая ошибка при инициализации: ${error.message}`);
-    sentryService.captureException(error);
   }
 }
 
@@ -308,11 +299,6 @@ if (document.readyState === 'loading') {
       }
     }
     
-    // Используем сервис логирования, если он доступен
-    if (window.sentryService) {
-      window.sentryService.captureException(error || new Error(message));
-    }
-    
     return false; // Позволяет выполнить стандартную обработку ошибок браузера
   };
   
@@ -330,11 +316,6 @@ if (document.readyState === 'loading') {
       if (loadingScreen) {
         loadingScreen.style.display = 'none';
       }
-    }
-    
-    // Используем сервис логирования, если он доступен
-    if (window.sentryService) {
-      window.sentryService.captureException(event.reason);
     }
   });
   

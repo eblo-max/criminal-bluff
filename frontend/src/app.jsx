@@ -8,7 +8,6 @@ import './app.css';
 import { sharedState } from './services/common';
 import { telegramService } from './services/telegramService';
 import { uiService } from './services/uiService';
-import { sentryService } from './services/sentryService';
 import { gameService } from './services/gameService';
 import { apiService } from './services/apiService';
 
@@ -59,19 +58,9 @@ class App extends Component {
     try {
       sharedState.log('App.componentDidMount вызван');
       
-      // Начинаем транзакцию для отслеживания производительности
-      const transaction = sentryService.startTransaction({
-        name: 'app-initialization',
-        op: 'initialization'
-      });
-      
-      // Инициализируем приложение
+      // Начинаем инициализацию приложения без отслеживания транзакции
       this.initApp();
       
-      // Завершаем транзакцию после инициализации
-      setTimeout(() => {
-        transaction.finish();
-      }, 1000);
     } catch (error) {
       this.handleError(error, 'App.componentDidMount');
     }
@@ -98,13 +87,7 @@ class App extends Component {
         return true;
       }
       
-      // Начинаем транзакцию для мониторинга производительности
-      const transaction = sentryService.startTransaction({
-        name: 'app.init',
-        op: 'initialization'
-      });
-      
-      // Инициализируем все необходимые сервисы
+      // Инициализируем все необходимые сервисы без транзакции
       await this.initServices();
       
       // Инициализируем экраны
@@ -116,9 +99,6 @@ class App extends Component {
       this.setState({ initialized: true });
       sharedState.isAppInitialized = true;
       sharedState.log('Инициализация приложения завершена успешно', 'info');
-      
-      transaction.setStatus('ok');
-      transaction.finish();
       
       return true;
     } catch (error) {
@@ -132,9 +112,8 @@ class App extends Component {
    */
   async initServices() {
     try {
-      // Инициализируем логирование
-      sentryService.initSentry();
-      sharedState.log('Логирование инициализировано', 'info');
+      // Удаляем инициализацию логирования
+      sharedState.log('Начинаем инициализацию сервисов', 'info');
 
       // Инициализируем Telegram сервис
       await telegramService.init();
@@ -205,7 +184,7 @@ class App extends Component {
     window.addEventListener('error', event => {
       const error = event.error || new Error(event.message);
       sharedState.log(`Необработанная ошибка: ${error.message}`, 'error');
-      sentryService.captureException(error);
+      // Удаляем вызов sentryService
       this.handleError(error, 'app.initErrorHandlers');
     });
 
@@ -213,7 +192,7 @@ class App extends Component {
     window.addEventListener('unhandledrejection', event => {
       const error = event.reason || new Error('Unhandled Promise rejection');
       sharedState.log(`Необработанный Promise rejection: ${error.message}`, 'error');
-      sentryService.captureException(error);
+      // Удаляем вызов sentryService
     });
   }
   
@@ -250,83 +229,54 @@ class App extends Component {
       sharedState.log(`Отображен экран: ${screenId}`, 'info');
       return true;
     } catch (error) {
+      // Удаляем вызов sentryService
       sharedState.log(`Ошибка при отображении экрана ${screenId}: ${error.message}`, 'error');
-      sentryService.captureException(error);
       return false;
     }
   }
   
   /**
-   * Обработка ошибок приложения
-   * @param {Error} error - Объект ошибки
-   * @param {string} source - Источник ошибки
+   * Обработка ошибок
+   * @param {Error} error - объект ошибки
+   * @param {string} source - источник ошибки
    */
   handleError(error, source) {
+    // Логируем ошибку без использования Sentry
+    console.error(`Ошибка [${source}]:`, error);
     sharedState.log(`Ошибка [${source}]: ${error.message}`, 'error');
-    sentryService.captureException(error, { source });
     
-    // Показываем сообщение об ошибке пользователю
-    sharedState.safelyManipulateDOM(() => {
-      const errorElement = document.getElementById('error-message');
-      if (errorElement) {
-        errorElement.textContent = 'Произошла ошибка при загрузке приложения. Пожалуйста, попробуйте обновить страницу.';
-        errorElement.classList.remove('hidden');
-      }
-    });
+    // Обновляем состояние для отображения ошибки пользователю
+    this.setState({ error: error.message });
+    
+    // Отображаем сообщение об ошибке пользователю через UI сервис
+    if (uiService) {
+      uiService.showError(`Произошла ошибка: ${error.message}`);
+    }
   }
   
   /**
-   * Рендеринг компонента
+   * Рендер компонента
    */
   render() {
-    // Если произошла ошибка, показываем сообщение об ошибке
-    if (this.state.error) {
+    try {
       return (
-        <div className="app-error">
-          <h2>Произошла ошибка</h2>
-          <p>{this.state.error}</p>
-          <button onClick={() => window.location.reload()}>
-            Перезагрузить приложение
-          </button>
+        <div className="app-container">
+          <StartScreen />
+          <GameScreen />
+          <ResultScreen />
+          <ProfileScreen />
+          <LeaderboardScreen />
         </div>
       );
+    } catch (error) {
+      // Удаляем вызов sentryService
+      console.error('Error rendering App:', error);
+      return <div className="error-container">Ошибка приложения</div>;
     }
-    
-    // Основной интерфейс приложения
-    return (
-      <div className="app">
-        {/* Контейнер для всего приложения */}
-        <div id="app-container">
-          {/* Контейнер для отображения текущего экрана */}
-          <div id="screen-container">
-            {/* Экраны будут загружаться динамически через UI сервис */}
-          </div>
-        </div>
-      </div>
-    );
   }
 }
 
-// Создаем экземпляр приложения
-const app = new App();
-
-// Инициализируем приложение при загрузке DOM
-document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    await app.initApp();
-    
-    // После инициализации переходим на главный экран
-    setTimeout(() => {
-      app.showScreen('welcome');
-    }, 1000);
-  } catch (error) {
-    sharedState.log(`Ошибка при инициализации: ${error.message}`, 'error');
-    sentryService.captureException(error);
-  }
-});
-
-// Экспортируем приложение для доступа из других модулей
-export default app;
+export default App;
 
 /**
  * Вспомогательная функция для создания SVG логотипа
