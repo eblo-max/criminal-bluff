@@ -6,7 +6,7 @@ import * as Sentry from '@sentry/browser';
 import { browserTracingIntegration, replayIntegration } from '@sentry/browser';
 
 // Конфигурация Sentry
-const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN || 'https://a5291ea1ed611f0a45522c403b23981@o4509192317370448.ingest.sentry.io/4509192317731328';
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN || 'https://a5291ea1ed611f0a45522c403b23981@asata-1w.sentry.io/4509192317731328';
 
 // Инициализация Sentry с настройками для версии 9.x
 export function initSentry() {
