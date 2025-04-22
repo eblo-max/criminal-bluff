@@ -25,6 +25,12 @@ window.debugMode = localStorage.getItem('debug_mode') === 'true' ||
                   window.location.hostname === 'localhost' ||
                   window.location.search.includes('debug=true');
 
+// Расширенное логирование состояния
+console.log('App initialization starting...');
+console.log('Telegram WebApp available:', !!window.Telegram?.WebApp);
+console.log('Window dimensions:', window.innerWidth, 'x', window.innerHeight);
+console.log('DOM ready state:', document.readyState);
+
 class App {
   constructor() {
     this.currentScreen = null;
@@ -40,9 +46,13 @@ class App {
 
     // Инициализируем приложение только после полной загрузки DOM
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => this.init());
-      } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOMContentLoaded event fired, initializing app');
+        this.init();
+      });
+    } else {
       // DOM уже загружен
+      console.log('DOM already loaded, initializing app directly');
       this.init();
     }
   }
@@ -54,39 +64,85 @@ class App {
       // Проверяем наличие основных DOM элементов
       const mainAppContainer = document.getElementById('app');
       if (!mainAppContainer) {
-        throw new Error('Ошибка: Не найден контейнер приложения #app');
+        console.error('Не найден контейнер приложения #app');
+        // Создаем контейнер, если он отсутствует
+        const appContainer = document.createElement('div');
+        appContainer.id = 'app';
+        document.body.appendChild(appContainer);
+        console.log('Создан новый контейнер #app');
       }
 
-      // Инициализируем Sentry для отслеживания ошибок
-      sentryService.initSentry(); // Используем sentryService как единственный сервис мониторинга
-      
-      // Инициализируем Telegram WebApp
-      initTelegram()
-        .then(() => {
-          console.log('Telegram WebApp успешно инициализирован');
-          // Обновляем контекст пользователя Telegram в Sentry
-          const telegramUser = getTelegramUser();
-          if (telegramUser) {
-            sentryService.setUserContext(telegramUser);
-          }
-          
-          this.initScreens();
-          this.isInitialized = true;
-          
-          // Показываем стартовый экран
-          this.showScreen('start');
-          this.isStarted = true;
-    })
-    .catch(error => {
-          console.error('Ошибка при инициализации Telegram WebApp:', error);
-          sentryService.captureException(error);
-          this.showErrorMessage('Не удалось инициализировать Telegram WebApp. Пожалуйста, попробуйте позже.');
+      // Если мы в среде Telegram, используем специальный порядок инициализации
+      if (window.Telegram && window.Telegram.WebApp) {
+        console.log('Обнаружен Telegram WebApp, используем специальную инициализацию');
+        // Сообщаем Telegram, что приложение готово к работе
+        window.Telegram.WebApp.ready();
+        
+        // Инициализируем Telegram с помощью событий
+        window.Telegram.WebApp.onEvent('viewportChanged', () => {
+          console.log('Получено событие viewportChanged от Telegram WebApp');
+          this.initTelegramFlow();
         });
+        
+        // На случай, если viewportChanged не сработает
+        setTimeout(() => {
+          if (!this.isInitialized) {
+            console.log('Таймаут инициализации Telegram, запуск вручную');
+            this.initTelegramFlow();
+          }
+        }, 500);
+      } else {
+        // Стандартная инициализация без Telegram
+        console.log('Telegram WebApp не обнаружен, используем стандартную инициализацию');
+        this.initStandardFlow();
+      }
     } catch (error) {
       console.error('Критическая ошибка при инициализации приложения:', error);
       sentryService.captureException(error);
       this.showErrorMessage('Критическая ошибка при запуске приложения.');
     }
+  }
+  
+  // Инициализация для Telegram WebApp
+  initTelegramFlow() {
+    // Инициализируем Sentry для отслеживания ошибок
+    sentryService.initSentry();
+    
+    // Инициализируем Telegram WebApp
+    initTelegram()
+      .then(() => {
+        console.log('Telegram WebApp успешно инициализирован');
+        // Обновляем контекст пользователя Telegram в Sentry
+        const telegramUser = getTelegramUser();
+        if (telegramUser) {
+          sentryService.setUserContext(telegramUser);
+        }
+        
+        this.initScreens();
+        this.isInitialized = true;
+        
+        // Показываем стартовый экран
+        this.showScreen('start');
+        this.isStarted = true;
+      })
+      .catch(error => {
+        console.error('Ошибка при инициализации Telegram WebApp:', error);
+        sentryService.captureException(error);
+        this.showErrorMessage('Не удалось инициализировать Telegram WebApp. Пожалуйста, попробуйте позже.');
+      });
+  }
+  
+  // Стандартная инициализация без Telegram
+  initStandardFlow() {
+    // Инициализируем Sentry для отслеживания ошибок
+    sentryService.initSentry();
+    
+    this.initScreens();
+    this.isInitialized = true;
+    
+    // Показываем стартовый экран
+    this.showScreen('start');
+    this.isStarted = true;
   }
 
   initScreens() {
@@ -141,7 +197,10 @@ class App {
       // Показываем новый экран
       const newScreenElement = document.getElementById(`${screenName}-screen`);
       if (!newScreenElement) {
-        throw new Error(`DOM элемент для экрана "${screenName}" не найден`);
+        console.error(`DOM элемент для экрана "${screenName}" не найден`);
+        // Пытаемся создать элемент экрана, если он отсутствует
+        this.createScreenElement(screenName);
+        return;
       }
       
       newScreenElement.style.display = 'block';
@@ -160,6 +219,40 @@ class App {
       console.error(`Ошибка при показе экрана ${screenName}:`, error);
       sentryService.captureException(error);
       this.showErrorMessage('Ошибка при переключении экрана.');
+    }
+  }
+  
+  // Создание элемента экрана, если он не существует
+  createScreenElement(screenName) {
+    try {
+      console.log(`Создание отсутствующего элемента экрана: ${screenName}`);
+      const appContainer = document.getElementById('app');
+      if (!appContainer) {
+        throw new Error('Контейнер приложения #app не найден');
+      }
+      
+      const screenElement = document.createElement('div');
+      screenElement.id = `${screenName}-screen`;
+      screenElement.className = 'screen';
+      screenElement.style.display = 'none';
+      
+      // Добавляем заголовок и сообщение о необходимости перезагрузки
+      const header = document.createElement('h2');
+      header.textContent = `Экран ${screenName}`;
+      
+      const message = document.createElement('p');
+      message.textContent = 'Произошла ошибка при загрузке экрана. Пожалуйста, перезагрузите приложение.';
+      
+      screenElement.appendChild(header);
+      screenElement.appendChild(message);
+      appContainer.appendChild(screenElement);
+      
+      console.log(`Создан временный элемент экрана: ${screenName}`);
+      return screenElement;
+    } catch (error) {
+      console.error(`Ошибка при создании элемента экрана ${screenName}:`, error);
+      sentryService.captureException(error);
+      this.showErrorMessage('Критическая ошибка при создании элемента экрана.');
     }
   }
 

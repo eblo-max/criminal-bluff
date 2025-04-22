@@ -3,10 +3,63 @@
  * Сервис для взаимодействия с API Telegram Mini Apps
  */
 
+// Избегаем циклические зависимости - не импортируем uiService напрямую
+// Будем использовать только прямые DOM-манипуляции для критически важных ошибок
+
 // Singleton для хранения и предотвращения повторной инициализации
 let _instance = null;
 let _telegramUser = null;
 let _telegramInitialized = false;
+
+// Вспомогательная функция для проверки DOM-элементов перед манипуляцией
+function safelyManipulateDOM(elementId, callback) {
+  try {
+    const element = document.getElementById(elementId);
+    if (element) {
+      callback(element);
+      return true;
+    }
+    console.warn(`Элемент с ID "${elementId}" не найден для манипуляции`);
+    return false;
+  } catch (error) {
+    console.error(`Ошибка при манипуляции с DOM-элементом "${elementId}":`, error);
+    return false;
+  }
+}
+
+// Вспомогательная функция для безопасного логирования
+function safeLog(message, level = 'info', data = null) {
+  try {
+    switch (level) {
+      case 'error':
+        console.error(message, data || '');
+        break;
+      case 'warn':
+        console.warn(message, data || '');
+        break;
+      default:
+        console.log(message, data || '');
+    }
+    
+    // Добавляем сообщение в DOM для отладки в режиме разработки
+    if (process.env.NODE_ENV === 'development' || window.debugMode) {
+      const debugContainer = document.getElementById('debug-log');
+      if (debugContainer) {
+        const logItem = document.createElement('div');
+        logItem.className = `debug-log-item ${level}`;
+        logItem.textContent = `[${new Date().toISOString()}] ${message}`;
+        debugContainer.appendChild(logItem);
+        
+        // Ограничиваем количество сообщений
+        if (debugContainer.children.length > 50) {
+          debugContainer.removeChild(debugContainer.firstChild);
+        }
+      }
+    }
+  } catch (err) {
+    // В случае ошибки - молча завершаемся, чтобы не вызвать рекурсию
+  }
+}
 
 /**
  * Инициализация Telegram WebApp
@@ -16,9 +69,13 @@ export async function initTelegram() {
   try {
     // Если уже инициализирован, возвращаем положительный результат
     if (_telegramInitialized) {
-      console.log('Telegram WebApp уже был инициализирован ранее');
+      safeLog('Telegram WebApp уже был инициализирован ранее');
       return true;
     }
+    
+    safeLog('Начинаем инициализацию Telegram WebApp');
+    safeLog(`Telegram WebApp доступен: ${!!window.Telegram?.WebApp}`);
+    safeLog(`Состояние DOM: ${document.readyState}`);
     
     // Создаем экземпляр сервиса, если он еще не был создан
     if (!_instance) {
@@ -33,14 +90,14 @@ export async function initTelegram() {
       _telegramUser = _instance.user;
       _telegramInitialized = true;
       
-      console.log('Telegram WebApp успешно инициализирован');
+      safeLog('Telegram WebApp успешно инициализирован');
       return true;
     }
     
-    console.error('Не удалось инициализировать Telegram WebApp');
+    safeLog('Не удалось инициализировать Telegram WebApp', 'error');
     return false;
   } catch (error) {
-    console.error('Ошибка при инициализации Telegram WebApp:', error);
+    safeLog(`Ошибка при инициализации Telegram WebApp: ${error.message}`, 'error');
     return false;
   }
 }
@@ -52,7 +109,7 @@ export async function initTelegram() {
 export function getTelegramUser() {
   // Если инициализация не была выполнена, возвращаем null
   if (!_telegramInitialized) {
-    console.warn('Попытка получить пользователя Telegram до инициализации');
+    safeLog('Попытка получить пользователя Telegram до инициализации', 'warn');
     return null;
   }
   
@@ -89,6 +146,12 @@ export class TelegramService {
     
     // Обработчик для завершения инициализации
     this.onInitComplete = null;
+    
+    // Логирование создания сервиса
+    safeLog('TelegramService создан', 'info', {
+      tgAvailable: !!this.tg,
+      initData: this.initData ? 'доступны' : 'недоступны'
+    });
   }
   
   /**
@@ -96,25 +159,25 @@ export class TelegramService {
    */
   async init() {
     try {
-      console.log('Starting Telegram WebApp initialization...');
+      safeLog('Starting Telegram WebApp initialization...');
       
       // Запись отладочной информации
       this._logDebugInfo('Начало инициализации');
       
       // Проверяем наличие объекта Telegram.WebApp
       if (!this.tg) {
-        console.error('ОШИБКА: Telegram WebApp объект недоступен');
+        safeLog('ОШИБКА: Telegram WebApp объект недоступен', 'error');
         this._logDebugInfo('Telegram WebApp объект недоступен');
         
         // Проверяем наличие window.Telegram
         if (window.Telegram) {
-          console.log('window.Telegram есть, но WebApp отсутствует');
+          safeLog('window.Telegram есть, но WebApp отсутствует', 'warn');
           this._logDebugInfo('window.Telegram есть, но WebApp отсутствует');
         }
         
         // Специальный режим для отладки
         if (this._isDebugMode()) {
-          console.warn('Включен режим отладки. Пробуем запуститься без WebApp');
+          safeLog('Включен режим отладки. Пробуем запуститься без WebApp', 'warn');
           this._logDebugInfo('Пробуем запуститься в режиме отладки');
           return await this.fallbackInitialization();
         }
@@ -123,14 +186,21 @@ export class TelegramService {
         return false;
       }
       
-      console.log('Telegram WebApp объект найден, версия:', this.tg.version);
+      safeLog(`Telegram WebApp объект найден, версия: ${this.tg.version}`);
       this._logDebugInfo(`WebApp версия: ${this.tg.version}, платформа: ${this.tg.platform}`);
+      
+      // Сообщаем Telegram, что приложение готово
+      try {
+        this.tg.ready();
+      } catch (readyError) {
+        safeLog(`Ошибка при вызове WebApp.ready(): ${readyError.message}`, 'warn');
+      }
       
       // Расширяем окно приложения на всю высоту
       try {
         this.tg.expand();
       } catch (expandError) {
-        console.warn('Не удалось расширить окно WebApp:', expandError);
+        safeLog(`Не удалось расширить окно WebApp: ${expandError.message}`, 'warn');
         this._logDebugInfo(`Ошибка при расширении окна: ${expandError.message}`);
       }
       
@@ -150,26 +220,26 @@ export class TelegramService {
           if (unsafeData.hash) rawInitData.append('hash', unsafeData.hash);
           
           this.initData = rawInitData.toString();
-          console.log('Создан initData из initDataUnsafe');
+          safeLog('Создан initData из initDataUnsafe');
           this._logDebugInfo('Создан initData из initDataUnsafe');
         } catch (dataError) {
-          console.error('Ошибка при создании initData из initDataUnsafe:', dataError);
+          safeLog(`Ошибка при создании initData из initDataUnsafe: ${dataError.message}`, 'error');
           this._logDebugInfo(`Ошибка при создании initData: ${dataError.message}`);
         }
       }
       
       if (!this.initData) {
-        console.error('ОШИБКА: initData не доступны в WebApp объекте');
+        safeLog('ОШИБКА: initData не доступны в WebApp объекте', 'error');
         this._logDebugInfo('initData не доступны в WebApp объекте');
         
         // Пробуем получить из localStorage (если был сохранен ранее)
         const savedInitData = localStorage.getItem('tg_init_data');
         if (savedInitData) {
-          console.log('Используем сохраненные initData из localStorage');
+          safeLog('Используем сохраненные initData из localStorage');
           this._logDebugInfo('Используем сохраненные initData из localStorage');
           this.initData = savedInitData;
         } else if (this._isDebugMode()) {
-          console.warn('Включен режим отладки. Пробуем запуститься без initData');
+          safeLog('Включен режим отладки. Пробуем запуститься без initData', 'warn');
           this._logDebugInfo('Запуск в режиме отладки без initData');
           return await this.fallbackInitialization();
         } else {
@@ -177,7 +247,7 @@ export class TelegramService {
           return false;
         }
       } else {
-        console.log('initData получены из WebApp объекта');
+        safeLog('initData получены из WebApp объекта');
         this._logDebugInfo('initData получены успешно');
         localStorage.setItem('tg_init_data', this.initData);
       }
@@ -185,10 +255,10 @@ export class TelegramService {
       // Получаем данные пользователя
       if (this.tg.initDataUnsafe && this.tg.initDataUnsafe.user) {
         this.user = this.tg.initDataUnsafe.user;
-        console.log('Данные пользователя получены:', this.user.username || this.user.id);
+        safeLog(`Данные пользователя получены: ${this.user.username || this.user.id}`);
         this._logDebugInfo(`Пользователь: ${this.user.username || this.user.id}`);
       } else {
-        console.warn('Данные пользователя недоступны в initDataUnsafe');
+        safeLog('Данные пользователя недоступны в initDataUnsafe', 'warn');
         this._logDebugInfo('Данные пользователя недоступны');
       }
       
@@ -209,7 +279,7 @@ export class TelegramService {
         colorScheme: this.tg.colorScheme
       };
       
-      console.log('Telegram WebApp детальная информация:', debugInfo);
+      safeLog('Telegram WebApp детальная информация:', 'info', debugInfo);
       this._logDebugInfo(`Детальная информация: ${JSON.stringify(debugInfo)}`);
       
       // Проверяем возможность аутентификации
@@ -217,215 +287,181 @@ export class TelegramService {
         // Проверяем токен в localStorage
         const savedToken = localStorage.getItem('auth_token');
         if (savedToken) {
-          console.log('Найден сохраненный токен, проверяем валидность');
+          safeLog('Найден сохраненный токен, проверяем валидность');
           this._logDebugInfo('Проверяем сохраненный токен');
           this.authToken = savedToken;
           const isValid = await this.validateToken(this.authToken);
           if (isValid) {
-            console.log('Токен валиден, аутентификация успешна');
+            safeLog('Токен валиден, аутентификация успешна');
             this._logDebugInfo('Токен валиден, аутентификация успешна');
             this.initialized = true;
             if (this.onInitComplete) this.onInitComplete();
             return true;
           }
-          console.log('Токен невалиден, требуется повторная аутентификация');
+          safeLog('Токен невалиден, требуется повторная аутентификация');
           this._logDebugInfo('Токен невалиден, повторная аутентификация');
         }
         
         // Если нет токена или он невалиден, аутентифицируемся заново
-        console.log('Выполняем аутентификацию с сервером...');
+        safeLog('Выполняем аутентификацию с сервером...');
         this._logDebugInfo('Выполняем аутентификацию с сервером');
         const authResult = await this.authenticate();
-        console.log('Результат аутентификации:', authResult ? 'успешно' : 'неудача');
+        safeLog(`Результат аутентификации: ${authResult ? 'успешно' : 'неудача'}`);
         this._logDebugInfo(`Результат аутентификации: ${authResult ? 'успешно' : 'неудача'}`);
         
         this.initialized = authResult;
         if (authResult && this.onInitComplete) this.onInitComplete();
         return authResult;
       } catch (error) {
-        console.error('Ошибка при аутентификации:', error.message);
+        safeLog(`Ошибка при аутентификации: ${error.message}`, 'error');
         this._logDebugInfo(`Ошибка при аутентификации: ${error.message}`);
         return false;
       }
     } catch (initError) {
-      console.error('Критическая ошибка при инициализации TelegramService:', initError);
+      safeLog(`Критическая ошибка при инициализации TelegramService: ${initError.message}`, 'error');
       this._logDebugInfo(`Критическая ошибка: ${initError.message}`);
       
-      // В режиме отладки пробуем запуститься без инициализации Telegram
-      if (this._isDebugMode()) {
-        console.warn('Попытка резервной инициализации после ошибки');
-        return await this.fallbackInitialization();
+      // Показываем ошибку пользователю через DOM
+      this._showErrorMessageDOM('Не удалось инициализировать Telegram приложение. Пожалуйста, попробуйте позже.');
+      return false;
+    }
+  }
+  
+  /**
+   * Внутренний метод отображения ошибки через DOM
+   * Не использует uiService для избежания циклических зависимостей
+   */
+  _showErrorMessageDOM(message) {
+    try {
+      let errorElement = document.getElementById('error-message');
+      
+      if (!errorElement) {
+        errorElement = document.createElement('div');
+        errorElement.id = 'error-message';
+        errorElement.style.position = 'fixed';
+        errorElement.style.top = '50%';
+        errorElement.style.left = '50%';
+        errorElement.style.transform = 'translate(-50%, -50%)';
+        errorElement.style.backgroundColor = '#f5222d';
+        errorElement.style.color = 'white';
+        errorElement.style.padding = '15px 20px';
+        errorElement.style.borderRadius = '8px';
+        errorElement.style.maxWidth = '80%';
+        errorElement.style.textAlign = 'center';
+        errorElement.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+        errorElement.style.zIndex = '10000';
+        document.body.appendChild(errorElement);
       }
       
-      return false;
+      errorElement.textContent = message;
+      errorElement.style.display = 'block';
+      
+      // Скрываем загрузочный экран, если он есть
+      const loadingScreen = document.getElementById('loading-screen');
+      if (loadingScreen) {
+        loadingScreen.style.display = 'none';
+      }
+    } catch (err) {
+      // В случае ошибки, по крайней мере логируем в консоль
+      console.error('Не удалось отобразить сообщение об ошибке через DOM:', err);
     }
   }
   
   /**
    * Проверка режима отладки
-   * @private
    */
   _isDebugMode() {
-    return localStorage.getItem('debug_mode') === 'true' || 
-           process.env.NODE_ENV === 'development' || 
-           window.location.hostname === 'localhost' ||
-           window.location.search.includes('debug=true');
+    return (
+      window.debugMode === true ||
+      localStorage.getItem('debug_mode') === 'true' ||
+      process.env.NODE_ENV === 'development' ||
+      window.location.hostname === 'localhost' ||
+      window.location.search.includes('debug=true')
+    );
   }
-
+  
   /**
-   * Запись отладочной информации
-   * @private
+   * Логирование отладочной информации
    */
   _logDebugInfo(message) {
     try {
-      // Сначала логируем в консоль всегда
-      console.log(`[DEBUG] ${message}`);
+      if (!this._isDebugMode()) return;
       
-      // Добавляем запись в HTML элемент для отладки только если он существует
-      const debugElement = document.getElementById('debug-output');
-      if (debugElement) {
-        const timestamp = new Date().toISOString();
+      // Сохраняем лог в localStorage для возможности просмотра после сбоев
+      const logs = JSON.parse(localStorage.getItem('tg_debug_logs') || '[]');
+      logs.push({
+        timestamp: new Date().toISOString(),
+        message: message,
+        userAgent: navigator.userAgent,
+        url: window.location.href
+      });
+      
+      // Ограничиваем количество логов
+      if (logs.length > 100) {
+        logs.shift(); // Удаляем самый старый лог
+      }
+      
+      localStorage.setItem('tg_debug_logs', JSON.stringify(logs));
+      
+      // Добавляем в отладочную панель, если она есть
+      const debugPanel = document.getElementById('debug-panel');
+      if (debugPanel) {
         const logItem = document.createElement('div');
-        logItem.textContent = `• ${timestamp}: ${message}`;
-        logItem.style.color = 'lime';
-        logItem.style.fontSize = '12px';
-        logItem.style.marginBottom = '4px';
-        debugElement.appendChild(logItem);
-      }
-      
-      // Сохраняем логи в localStorage
-      try {
-        // Получаем существующие логи
-        let logs = [];
-        const savedLogs = localStorage.getItem('debug_logs');
-        if (savedLogs) {
-          logs = JSON.parse(savedLogs);
+        logItem.className = 'debug-log-item';
+        logItem.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        debugPanel.appendChild(logItem);
+        
+        // Ограничиваем количество элементов
+        if (debugPanel.children.length > 50) {
+          debugPanel.removeChild(debugPanel.firstChild);
         }
         
-        // Добавляем новую запись
-        logs.push({
-          time: new Date().toISOString(),
-          message: message
-        });
-        
-        // Ограничиваем количество логов
-        if (logs.length > 50) {
-          logs = logs.slice(logs.length - 50);
-        }
-        
-        // Сохраняем обновленные логи
-        localStorage.setItem('debug_logs', JSON.stringify(logs));
-      } catch (storerError) {
-        console.warn('Не удалось сохранить логи в localStorage:', storerError);
+        // Прокручиваем к последнему сообщению
+        debugPanel.scrollTop = debugPanel.scrollHeight;
       }
-    } catch (error) {
-      console.error('Ошибка при логировании:', error);
+    } catch (e) {
+      // Игнорируем ошибки при логировании
+      console.warn('Ошибка при логировании отладочной информации:', e);
     }
   }
   
   /**
-   * Резервная инициализация для режима отладки
+   * Запасная инициализация для режима отладки
    */
   async fallbackInitialization() {
-    console.warn('Используется резервная инициализация для отладки');
-    this._logDebugInfo('Используется резервная инициализация');
-    
-    // Создаем и добавляем отладочную панель, если ее еще нет
-    this._createDebugPanel();
-    
-    // Пробуем выполнить отладочный вход
     try {
-      // Пробуем использовать сохраненный токен для отладки сначала
-      const debugToken = localStorage.getItem('debug_token');
-      if (debugToken) {
-        console.log('Используем сохраненный отладочный токен');
-        this._logDebugInfo('Используем сохраненный отладочный токен');
-        this.authToken = debugToken;
-        localStorage.setItem('auth_token', debugToken);
-        this.initialized = true;
-        if (this.onInitComplete) this.onInitComplete();
-        return true;
-      }
+      safeLog('Запуск резервной инициализации для режима отладки');
+      this._logDebugInfo('Резервная инициализация');
       
-      // Если нет сохраненного токена, запрашиваем новый
-      const apiUrl = this.apiBaseUrl || window.location.origin;
-      const response = await fetch(`${apiUrl}/api/debug-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      // Создаем фиктивные данные пользователя
+      this.user = {
+        id: 123456789,
+        first_name: 'Debug',
+        last_name: 'User',
+        username: 'debug_user',
+        language_code: 'ru',
+        isDebug: true
+      };
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Ошибка отладочного входа:', errorText);
-        this._logDebugInfo(`Ошибка отладочного входа: ${errorText}`);
-        
-        // Проверяем наличие альтернативных путей
-        if (this._isDebugMode()) {
-          console.warn('Продолжаем без аутентификации в режиме разработки');
-          this._logDebugInfo('Продолжаем без аутентификации в режиме разработки');
-          
-          // Создаем фиктивные данные для отладки
-          this.user = {
-            id: 123456789,
-            username: 'debug_user',
-            first_name: 'Debug',
-            last_name: 'User'
-          };
-          
-          this.initialized = true;
-          if (this.onInitComplete) this.onInitComplete();
-          return true;
-        }
-        
-        return false;
-      }
+      // Сохраняем пользователя в localStorage
+      localStorage.setItem('debug_user', JSON.stringify(this.user));
       
-      const result = await response.json();
+      // Создаем отладочную панель для удобства тестирования
+      this._createDebugPanel();
       
-      if (result.success && result.token) {
-        this.authToken = result.token;
-        localStorage.setItem('auth_token', result.token);
-        localStorage.setItem('debug_token', result.token);
-        
-        if (result.user) {
-          this.user = result.user;
-          localStorage.setItem('user_data', JSON.stringify(result.user));
-        }
-        
-        console.log('Отладочный вход выполнен успешно');
-        this._logDebugInfo('Отладочный вход выполнен успешно');
-        
-        this.initialized = true;
-        if (this.onInitComplete) this.onInitComplete();
-        return true;
-      }
+      // В режиме отладки можем эмулировать успешную аутентификацию
+      this.authToken = 'debug_token_' + Date.now();
+      localStorage.setItem('auth_token', this.authToken);
       
-      console.error('Отладочный вход не вернул валидные данные');
-      this._logDebugInfo('Отладочный вход не вернул валидные данные');
+      this.initialized = true;
+      if (this.onInitComplete) this.onInitComplete();
       
-      // В режиме разработки продолжаем без аутентификации
-      if (this._isDebugMode()) {
-        console.warn('Продолжаем без токена в режиме разработки');
-        this._logDebugInfo('Продолжаем без токена в режиме разработки');
-        this.initialized = true;
-        if (this.onInitComplete) this.onInitComplete();
-        return true;
-      }
-      
-      return false;
+      safeLog('Резервная инициализация успешно завершена');
+      this._logDebugInfo('Резервная инициализация успешна');
+      return true;
     } catch (error) {
-      console.error('Ошибка при отладочном входе:', error.message);
-      this._logDebugInfo(`Ошибка при отладочном входе: ${error.message}`);
-      
-      // В режиме разработки продолжаем даже при ошибке
-      if (this._isDebugMode()) {
-        console.warn('Продолжаем после ошибки в режиме разработки');
-        this._logDebugInfo('Продолжаем после ошибки в режиме разработки');
-        this.initialized = true;
-        if (this.onInitComplete) this.onInitComplete();
-        return true;
-      }
-      
+      safeLog(`Ошибка при резервной инициализации: ${error.message}`, 'error');
+      this._logDebugInfo(`Ошибка при резервной инициализации: ${error.message}`);
       return false;
     }
   }
