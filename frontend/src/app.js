@@ -5,7 +5,7 @@
 
 // Импорт модулей и сервисов
 import { ApiService } from './services/apiService.js';
-import { GameService } from './services/gameService.js';
+import GameService from './services/gameService.js';
 import { UiService } from './services/uiService.js';
 import { TelegramService, initTelegram, getTelegramUser } from './services/telegramService.js';
 import * as sentryService from './services/sentryService.js';

@@ -1,11 +1,11 @@
 import httpService from './httpService';
-import errorService from './errorService';
+import * as sentryService from './sentryService';
 
 /**
  * Game Service
  * Сервис для управления игровой логикой
  */
-export class GameService {
+class GameService {
   constructor(apiService, uiService) {
     this.apiService = apiService;
     this.uiService = uiService;
@@ -45,7 +45,7 @@ export class GameService {
    */
   async startGame() {
     // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: 'startGame',
       op: 'game.start'
     });
@@ -84,7 +84,7 @@ export class GameService {
       this.uiService.hideLoading();
       this.uiService.showError('Не удалось начать игру. Пожалуйста, попробуйте позже.');
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           gameAction: 'startGame'
         }
@@ -193,7 +193,7 @@ export class GameService {
    */
   async submitAnswer(optionIndex, isTimeout = false) {
     // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: 'submitAnswer',
       op: 'game.answer',
       data: {
@@ -256,7 +256,7 @@ export class GameService {
       this.uiService.hideLoading();
       this.uiService.showError('Ошибка при отправке ответа. Пожалуйста, попробуйте еще раз.');
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           gameAction: 'submitAnswer',
           storyIndex: this.currentStoryIndex
@@ -265,7 +265,7 @@ export class GameService {
       transaction.finish();
       
       // Метрика ошибок ответа на вопрос
-      errorService.captureMessage(
+      sentryService.captureMessage(
         `Ошибка при отправке ответа: ${error.message}`, 
         'error',
         {
@@ -340,7 +340,7 @@ export class GameService {
    */
   async nextStory() {
     // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: 'nextStory',
       op: 'game.next',
       data: {
@@ -352,7 +352,7 @@ export class GameService {
     try {
       if (!this.gameSession || !this.gameSession.gameId) {
         transaction.setStatus('invalid_argument');
-        errorService.captureMessage('Attempted to go to next story without active game', 'warning');
+        sentryService.captureMessage('Attempted to go to next story without active game', 'warning');
         this.uiService.showError('Не удалось перейти к следующей истории: игра не активна.');
         return;
       }
@@ -385,7 +385,7 @@ export class GameService {
       console.error('Next story error:', error);
       this.uiService.showError('Произошла ошибка при переходе к следующей истории. Попробуйте снова.');
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           gameAction: 'nextStory',
           storyIndex: this.currentStoryIndex
@@ -401,7 +401,7 @@ export class GameService {
    */
   async finishGame() {
     // Создаем транзакцию Sentry для отслеживания производительности
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: 'finishGame',
       op: 'game.finish'
     });
@@ -409,7 +409,7 @@ export class GameService {
     try {
       if (!this.gameSession || !this.gameSession.gameId) {
         transaction.setStatus('invalid_argument');
-        errorService.captureMessage('Attempted to finish game without active game', 'warning');
+        sentryService.captureMessage('Attempted to finish game without active game', 'warning');
         this.uiService.showError('Не удалось завершить игру: игра не активна.');
         return;
       }
@@ -452,7 +452,7 @@ export class GameService {
       // Всё равно показываем результаты
       this.showGameResults();
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           gameAction: 'finishGame'
         }
@@ -504,7 +504,7 @@ export class GameService {
    */
   abandonGame() {
     // Создаем транзакцию Sentry для отслеживания прерывания игры
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: 'abandonGame',
       op: 'game.abandon',
       data: {
@@ -519,7 +519,7 @@ export class GameService {
         this.apiService.post('/api/game/abandon', {
           gameId: this.gameSession.gameId
         }).catch(error => {
-          errorService.captureException(error, {
+          sentryService.captureException(error, {
             tags: {
               gameAction: 'abandonGame'
             },
@@ -537,7 +537,7 @@ export class GameService {
     } catch (error) {
       // Устанавливаем статус транзакции как ошибку и отправляем её в Sentry
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           gameAction: 'abandonGame'
         },
@@ -547,4 +547,7 @@ export class GameService {
       transaction.finish();
     }
   }
-} 
+}
+
+// Export as default instead of named export
+export default GameService; 

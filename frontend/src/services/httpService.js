@@ -1,5 +1,5 @@
 import axios from 'axios';
-import errorService from './errorService';
+import * as sentryService from './sentryService';
 
 // Создаем инстанс axios с базовым URL
 const http = axios.create({
@@ -29,7 +29,7 @@ http.interceptors.request.use(
   },
   error => {
     // Отправляем ошибку в систему мониторинга
-    errorService.captureException(error, {
+    sentryService.captureException(error, {
       tags: { component: 'httpService', type: 'request' }
     });
     return Promise.reject(error);
@@ -57,7 +57,7 @@ http.interceptors.response.use(
     
     // Игнорируем ошибки авторизации в системе мониторинга
     if (error.response?.status !== 401) {
-      errorService.captureException(error, errorData);
+      sentryService.captureException(error, errorData);
     }
     
     // Если ошибка связана с токеном (401), можно обновить токен или перенаправить на страницу логина

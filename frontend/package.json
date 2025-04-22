@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "railway:build": "node railway-build.js",
     "preview": "vite preview",
     "lint": "eslint src/**/*.js"
   },

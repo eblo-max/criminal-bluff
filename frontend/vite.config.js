@@ -20,6 +20,12 @@ export default defineConfig({
     },
     sourcemap: true,
   },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+      './services': resolve(__dirname, 'src/services')
+    }
+  },
   server: {
     port: 3001,
     proxy: {

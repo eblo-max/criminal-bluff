@@ -2,7 +2,7 @@
  * API Service
  * Сервис для взаимодействия с бэкэндом
  */
-import errorService from './errorService.js';
+import * as sentryService from './sentryService.js';
 
 export class ApiService {
   constructor() {
@@ -23,7 +23,7 @@ export class ApiService {
    * @returns {Promise<any>} - результат запроса
    */
   async fetchData(endpoint, method = 'GET', data = null) {
-    const transaction = errorService.startTransaction({
+    const transaction = sentryService.startTransaction({
       name: `${method} ${endpoint}`,
       op: 'http.client',
       data: { 
@@ -89,7 +89,7 @@ export class ApiService {
     } catch (error) {
       // Ошибка во время запроса
       transaction.setStatus('internal_error');
-      errorService.captureException(error, {
+      sentryService.captureException(error, {
         tags: {
           endpoint,
           method
