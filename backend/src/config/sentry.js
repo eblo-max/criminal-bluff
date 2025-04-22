@@ -4,8 +4,18 @@
  */
 const Sentry = require('@sentry/node');
 const { CaptureConsole } = require('@sentry/integrations');
-const { ProfilingIntegration } = require('@sentry/profiling-node');
 const logger = require('../utils/logger');
+
+// Попытка загрузки интеграции профилирования с обработкой ошибок
+let ProfilingIntegration;
+try {
+  // Пытаемся динамически импортировать модуль профилирования
+  ProfilingIntegration = require('@sentry/profiling-node').ProfilingIntegration;
+  logger.info('Sentry профилирование успешно загружено');
+} catch (error) {
+  logger.warn(`Не удалось загрузить модуль профилирования Sentry: ${error.message}`);
+  ProfilingIntegration = null;
+}
 
 /**
  * Инициализация Sentry
@@ -22,18 +32,29 @@ const initSentry = (app) => {
   }
   
   try {
+    // Формируем массив интеграций для Sentry
+    const integrations = [
+      // Включаем захват сообщений консоли
+      new CaptureConsole({
+        levels: ['error', 'warn']
+      })
+    ];
+    
+    // Добавляем профилирование только если оно доступно
+    if (ProfilingIntegration) {
+      try {
+        integrations.push(new ProfilingIntegration());
+        logger.info('Sentry профилирование активировано');
+      } catch (e) {
+        logger.warn(`Не удалось активировать профилирование Sentry: ${e.message}`);
+      }
+    }
+
     // Инициализация Sentry
     Sentry.init({
       dsn: dsn,
       environment: process.env.NODE_ENV || 'development',
-      integrations: [
-        // Включаем интеграцию профилирования для Node.js
-        new ProfilingIntegration(),
-        // Включаем захват сообщений консоли
-        new CaptureConsole({
-          levels: ['error', 'warn']
-        })
-      ],
+      integrations: integrations,
       
       // Настраиваем уровень трассировки и профилирования
       tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
