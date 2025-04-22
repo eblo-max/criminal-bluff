@@ -174,6 +174,15 @@ export class ApiService {
   }
   
   /**
+   * Прерывание игры пользователем
+   * @param {Object} gameData - данные игры для прерывания
+   * @returns {Promise<Object>} - результат прерывания
+   */
+  async abandonGame(gameData) {
+    return this.fetchData('/game/abandon', 'POST', gameData);
+  }
+  
+  /**
    * Получение таблицы лидеров
    * @param {string} period - период ('daily', 'weekly', 'all-time')
    * @returns {Promise<Array>} - данные таблицы лидеров

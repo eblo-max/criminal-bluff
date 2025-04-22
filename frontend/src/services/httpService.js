@@ -3,7 +3,7 @@ import * as sentryService from './sentryService';
 
 // Создаем инстанс axios с базовым URL
 const http = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
+  baseURL: '/api',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

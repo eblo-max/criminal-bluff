@@ -1,4 +1,3 @@
-import httpService from './httpService';
 import * as sentryService from './sentryService';
 
 /**
@@ -516,7 +515,7 @@ class GameService {
     try {
       if (this.gameSession && this.gameSession.gameId) {
         // Отправляем запрос на прерывание игры
-        this.apiService.post('/api/game/abandon', {
+        this.apiService.abandonGame({
           gameId: this.gameSession.gameId
         }).catch(error => {
           sentryService.captureException(error, {
