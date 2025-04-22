@@ -5,7 +5,8 @@ const fs = require('fs');
 // Create .env file if it doesn't exist
 if (!fs.existsSync('.env')) {
   console.log('Creating .env file for Railway build...');
-  fs.writeFileSync('.env', `VITE_SENTRY_DSN=https://a5291ea1ed611f0a45522c403b23981@o4509192317370448.ingest.sentry.io/4509192317731328\n`);
+  // Не создаем Sentry DSN, так как мы удалили зависимость
+  fs.writeFileSync('.env', `NODE_ENV=production\n`);
 }
 
 // Run the build
