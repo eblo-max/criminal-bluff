@@ -128,10 +128,20 @@ const sentryMiddleware = (app) => {
     return [(req, res, next) => next()];
   }
   
-  return [
-    // В Sentry v7 используем стандартный middleware
-    Sentry.Handlers.requestHandler()
-  ];
+  try {
+    // В Sentry v7 корректный способ использования requestHandler
+    return [Sentry.Handlers.requestHandler({
+      // Включаем обработку ошибок в middleware
+      serverName: process.env.APP_NAME || 'backend-api',
+      // Другие опции по необходимости
+      ip: true,
+      request: ['headers', 'method', 'url', 'query_string'],
+      user: ['id', 'username', 'ip_address']
+    })];
+  } catch (error) {
+    logger.error(`Ошибка при создании Sentry middleware: ${error.message}`);
+    return [(req, res, next) => next()];
+  }
 };
 
 /**
@@ -145,7 +155,12 @@ const sentryErrorHandler = () => {
     return (err, req, res, next) => next(err);
   }
   
-  return Sentry.Handlers.errorHandler();
+  try {
+    return Sentry.Handlers.errorHandler();
+  } catch (error) {
+    logger.error(`Ошибка при создании Sentry error handler: ${error.message}`);
+    return (err, req, res, next) => next(err);
+  }
 };
 
 /**
@@ -248,15 +263,53 @@ const addSentryTestRoute = (app) => {
     app.get('/debug-sentry', function mainHandler(req, res) {
       // Тест отправки ошибки в Sentry
       try {
-        throw new Error('Тестовая ошибка из API!');
-      } catch (error) {
-        Sentry.captureException(error);
+        throw new Error('Тестовая ошибка для Sentry');
+      } catch (e) {
+        console.error('Перехваченная тестовая ошибка:', e);
+        
+        // Отправляем ошибку в Sentry
+        captureException(e, {
+          tags: {
+            source: 'debug-sentry-route',
+            test_case: 'manual-error'
+          },
+          extra: {
+            test_info: 'Ручная проверка интеграции с Sentry',
+            timestamp: new Date().toISOString()
+          }
+        });
+        
         res.status(200).json({
-          success: true,
-          message: 'Тестовая ошибка отправлена в Sentry!'
+          message: 'Тестовая ошибка отправлена в Sentry. Проверьте дашборд.',
+          error: e.message,
+          stack: process.env.NODE_ENV === 'development' ? e.stack : undefined
         });
       }
     });
+    
+    app.get('/debug-sentry-message', function messageHandler(req, res) {
+      // Тест отправки сообщения в Sentry
+      const message = 'Тестовое сообщение для Sentry';
+      
+      captureMessage(message, {
+        level: 'info',
+        tags: {
+          source: 'debug-sentry-route',
+          test_case: 'manual-message'
+        },
+        extra: {
+          test_info: 'Ручная проверка отправки сообщений в Sentry',
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      res.status(200).json({
+        message: 'Тестовое сообщение отправлено в Sentry. Проверьте дашборд.',
+        sent_message: message
+      });
+    });
+    
+    logger.info('Добавлен тестовый маршрут для Sentry: /debug-sentry и /debug-sentry-message');
   }
 };
 
