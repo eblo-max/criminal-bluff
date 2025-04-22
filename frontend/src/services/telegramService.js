@@ -6,10 +6,13 @@
 // Избегаем циклические зависимости - не импортируем uiService напрямую
 // Будем использовать только прямые DOM-манипуляции для критически важных ошибок
 
-// Singleton для хранения и предотвращения повторной инициализации
+// Импортируем общее состояние для предотвращения циклических зависимостей
+import { sharedState } from './common';
+
+// Приватные переменные для синглтона
 let _instance = null;
-let _telegramUser = null;
 let _telegramInitialized = false;
+let _telegramUser = null;
 
 // Вспомогательная функция для проверки DOM-элементов перед манипуляцией
 function safelyManipulateDOM(elementId, callback) {
@@ -27,38 +30,49 @@ function safelyManipulateDOM(elementId, callback) {
   }
 }
 
-// Вспомогательная функция для безопасного логирования
-function safeLog(message, level = 'info', data = null) {
-  try {
-    switch (level) {
-      case 'error':
-        console.error(message, data || '');
-        break;
-      case 'warn':
-        console.warn(message, data || '');
-        break;
-      default:
-        console.log(message, data || '');
-    }
-    
-    // Добавляем сообщение в DOM для отладки в режиме разработки
-    if (process.env.NODE_ENV === 'development' || window.debugMode) {
-      const debugContainer = document.getElementById('debug-log');
-      if (debugContainer) {
-        const logItem = document.createElement('div');
-        logItem.className = `debug-log-item ${level}`;
-        logItem.textContent = `[${new Date().toISOString()}] ${message}`;
-        debugContainer.appendChild(logItem);
-        
-        // Ограничиваем количество сообщений
-        if (debugContainer.children.length > 50) {
-          debugContainer.removeChild(debugContainer.firstChild);
-        }
+/**
+ * Безопасное логирование для отладки
+ * @param {string} message - Сообщение для логирования
+ * @param {string} level - Уровень логирования (log, info, warn, error)
+ * @param {Object} data - Дополнительные данные для логирования
+ */
+export function safeLog(message, level = 'log', data = null) {
+  // Используем функцию логирования из общего состояния, если она доступна
+  if (sharedState && typeof sharedState.log === 'function') {
+    sharedState.log(message, level, data);
+  } else {
+    // Резервное логирование, если sharedState недоступен
+    try {
+      const prefix = '[TelegramService] ';
+      const formattedMessage = data 
+        ? `${prefix}${message} ${JSON.stringify(data)}`
+        : `${prefix}${message}`;
+      
+      switch (level) {
+        case 'info':
+          console.info(formattedMessage);
+          break;
+        case 'warn':
+          console.warn(formattedMessage);
+          break;
+        case 'error':
+          console.error(formattedMessage);
+          break;
+        default:
+          console.log(formattedMessage);
       }
+    } catch (error) {
+      console.error('[TelegramService] Ошибка логирования:', error);
     }
-  } catch (err) {
-    // В случае ошибки - молча завершаемся, чтобы не вызвать рекурсию
   }
+}
+
+/**
+ * Проверяет доступность Telegram WebApp
+ * @returns {boolean} - Доступен ли Telegram WebApp
+ */
+export function isTelegramAvailable() {
+  return !!(window.Telegram && window.Telegram.WebApp);
 }
 
 /**
@@ -74,7 +88,17 @@ export async function initTelegram() {
     }
     
     safeLog('Начинаем инициализацию Telegram WebApp');
-    safeLog(`Telegram WebApp доступен: ${!!window.Telegram?.WebApp}`);
+    
+    // Проверяем доступность Telegram WebApp
+    const available = isTelegramAvailable();
+    safeLog(`Telegram WebApp доступен: ${available}`);
+    
+    if (!available) {
+      safeLog('Telegram WebApp не доступен, инициализация невозможна', 'error');
+      sharedState.showErrorMessage('Telegram WebApp не доступен. Приложение должно быть открыто через Telegram.');
+      return false;
+    }
+    
     safeLog(`Состояние DOM: ${document.readyState}`);
     
     // Создаем экземпляр сервиса, если он еще не был создан
@@ -82,19 +106,45 @@ export async function initTelegram() {
       _instance = new TelegramService();
     }
     
-    // Выполняем инициализацию
-    const result = await _instance.init();
+    // Выполняем инициализацию с тремя попытками
+    let attempts = 0;
+    let result = false;
+    
+    while (attempts < 3 && !result) {
+      attempts++;
+      safeLog(`Попытка инициализации ${attempts}/3`);
+      
+      try {
+        result = await _instance.init();
+        
+        if (result) {
+          safeLog(`Успешная инициализация на попытке ${attempts}`);
+          break;
+        } else {
+          safeLog(`Неудачная попытка ${attempts}`, 'warn');
+          // Небольшая задержка перед следующей попыткой
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      } catch (initError) {
+        safeLog(`Ошибка при попытке ${attempts}: ${initError.message}`, 'error');
+        // Небольшая задержка перед следующей попыткой
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
     
     if (result) {
       // Сохраняем пользователя после успешной инициализации
       _telegramUser = _instance.user;
       _telegramInitialized = true;
       
+      // Обновляем состояние в shared state
+      sharedState.isTelegramReady = true;
+      
       safeLog('Telegram WebApp успешно инициализирован');
       return true;
     }
     
-    safeLog('Не удалось инициализировать Telegram WebApp', 'error');
+    safeLog(`Не удалось инициализировать Telegram WebApp после ${attempts} попыток`, 'error');
     return false;
   } catch (error) {
     safeLog(`Ошибка при инициализации Telegram WebApp: ${error.message}`, 'error');
@@ -103,25 +153,19 @@ export async function initTelegram() {
 }
 
 /**
- * Получение данных пользователя Telegram
- * @returns {Object|null} - Объект с данными пользователя или null
- */
-export function getTelegramUser() {
-  // Если инициализация не была выполнена, возвращаем null
-  if (!_telegramInitialized) {
-    safeLog('Попытка получить пользователя Telegram до инициализации', 'warn');
-    return null;
-  }
-  
-  return _telegramUser;
-}
-
-/**
- * Получение экземпляра сервиса Telegram
- * @returns {TelegramService|null} - Экземпляр TelegramService или null
+ * Получить экземпляр TelegramService
+ * @returns {TelegramService|null} - Экземпляр сервиса или null, если не инициализирован
  */
 export function getTelegramService() {
   return _instance;
+}
+
+/**
+ * Получить данные пользователя Telegram
+ * @returns {Object|null} - Данные пользователя или null, если не инициализирован
+ */
+export function getTelegramUser() {
+  return _telegramUser;
 }
 
 export class TelegramService {
