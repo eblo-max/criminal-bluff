@@ -149,6 +149,34 @@ function createLoadingScreen() {
   loadingScreen.appendChild(spinner);
   loadingScreen.appendChild(loadingText);
   document.body.appendChild(loadingScreen);
+  
+  return loadingScreen;
+}
+
+/**
+ * Создаем и рендерим React приложение
+ */
+async function renderReactApp() {
+  try {
+    // Проверяем наличие корневого элемента
+    let rootElement = document.getElementById('root');
+    
+    // Если корневой элемент не существует, создаем его
+    if (!rootElement) {
+      sharedState.log('Корневой элемент не найден, создаем новый', 'warn');
+      rootElement = document.createElement('div');
+      rootElement.id = 'root';
+      document.body.appendChild(rootElement);
+    }
+    
+    // Создаем корень React и монтируем приложение
+    const root = createRoot(rootElement);
+    root.render(<App />);
+    
+    sharedState.log('React приложение успешно смонтировано', 'info');
+  } catch (error) {
+    handleGlobalError(error);
+  }
 }
 
 /**
@@ -162,56 +190,26 @@ async function safeRender() {
     // Инициализируем Telegram WebApp
     await initializeTelegramWebApp();
     
-    // Импортируем модуль приложения
-    const { App } = await import('./app.js');
-    
-    // Убедимся, что DOM полностью загружен
+    // Проверяем готовность DOM и рендерим React приложение
     if (document.readyState !== 'complete') {
       sharedState.log('DOM еще не полностью загружен, ожидаем...', 'warn');
-      window.addEventListener('load', () => startApplication(App, loadingScreen));
+      window.addEventListener('load', renderReactApp);
     } else {
-      startApplication(App, loadingScreen);
-    }
-  } catch (error) {
-    handleGlobalError(error);
-  }
-}
-
-/**
- * Запускает приложение
- */
-function startApplication(App, loadingScreen) {
-  try {
-    // Проверяем наличие корневого элемента
-    let rootElement = document.getElementById('root');
-    
-    // Если корневой элемент не существует, создаем его
-    if (!rootElement) {
-      sharedState.log('Корневой элемент не найден, создаем новый', 'warn');
-      rootElement = document.createElement('div');
-      rootElement.id = 'root';
-      document.body.appendChild(rootElement);
+      renderReactApp();
     }
     
-    // Инициализируем и запускаем приложение
-    const app = new App();
-    app.render();
-    
-    // Скрываем экран загрузки
-    if (loadingScreen) {
-      setTimeout(() => {
+    // Скрываем экран загрузки после короткой задержки
+    setTimeout(() => {
+      if (loadingScreen) {
         loadingScreen.style.opacity = '0';
         loadingScreen.style.transition = 'opacity 0.5s ease';
-        
         setTimeout(() => {
           if (loadingScreen.parentNode) {
             loadingScreen.parentNode.removeChild(loadingScreen);
           }
         }, 500);
-      }, 500);
-    }
-    
-    sharedState.log('Приложение успешно запущено', 'info');
+      }
+    }, 1000);
   } catch (error) {
     handleGlobalError(error);
   }
@@ -339,4 +337,6 @@ async function initializeTelegramWebApp() {
 }
 
 // Запускаем приложение
-safeRender(); 
+document.addEventListener('DOMContentLoaded', () => {
+  safeRender();
+}); 
