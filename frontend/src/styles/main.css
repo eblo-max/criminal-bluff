@@ -715,4 +715,112 @@ body {
   font-weight: 500;
   margin-bottom: 10px;
   color: #e0e0e0;
+}
+
+/* Стили для дебаг-панели */
+.debug-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #00ff00;
+  font-family: monospace;
+  padding: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 9999;
+  font-size: 12px;
+  border-top: 2px solid #00ff00;
+}
+
+.debug-panel h3 {
+  margin: 5px 0;
+  color: #ffffff;
+}
+
+.debug-panel ul {
+  margin: 5px 0;
+  padding-left: 20px;
+}
+
+.debug-panel li {
+  margin-bottom: 2px;
+}
+
+/* Добавляем кнопку для активации дебаг-режима */
+.debug-toggle {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  width: 20px;
+  height: 20px;
+  background-color: transparent;
+  z-index: 9999;
+}
+
+/* Стили для экрана тестирования Sentry */
+.sentry-test-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 16px 0;
+  margin-top: 20px;
+}
+
+.sentry-test-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.test-section {
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.test-section h3 {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+.btn-danger {
+  background-color: #ff4d4d;
+  color: white;
+}
+
+.btn-warning {
+  background-color: #ffc107;
+  color: black;
+}
+
+.test-results {
+  background-color: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  margin-bottom: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.test-results h3 {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+#test-output {
+  font-family: monospace;
+  font-size: 12px;
+  color: #e2e2e2;
+  white-space: pre-wrap;
+  word-break: break-all;
 } 

@@ -302,80 +302,86 @@ exports.telegramAuth = async (req, res) => {
   try {
     const { initData } = req.body;
     
+    console.log('===== НАЧАЛО ПРОЦЕССА АВТОРИЗАЦИИ TELEGRAM WEBAPP =====');
+    console.log('Request headers:', JSON.stringify(req.headers));
+    console.log('initData получен из тела запроса:', initData ? 'Да' : 'Нет');
+    
     if (!initData) {
+      // Проверяем режим отладки
+      if (process.env.ALLOW_DEBUG_LOGIN === 'true' && process.env.NODE_ENV !== 'production') {
+        console.log('Включен режим отладки. Использую тестовую аутентификацию.');
+        return handleDebugLogin(req, res);
+      }
+      
+      console.error('ОШИБКА: Отсутствуют данные инициализации Telegram WebApp');
       return res.status(400).json({
         success: false,
         message: 'Отсутствуют данные инициализации Telegram WebApp'
       });
     }
     
-    // Проверяем данные инициализации
-    const crypto = require('crypto');
+    // Логируем первые 50 символов для отладки
+    console.log('initData (первые 50 символов):', initData.substring(0, 50) + '...');
     
-    // Парсим initData от Telegram
+    // Определяем формат данных
     const params = new URLSearchParams(initData);
-    const hash = params.get('hash');
+    const isWebAppFormat = params.has('hash');
+    const isCallbackFormat = params.has('signature');
     
-    if (!hash) {
-      return res.status(400).json({
-        success: false,
-        message: 'Отсутствует hash в данных инициализации'
-      });
-    }
+    console.log('Формат данных:', isWebAppFormat ? 'WebApp' : (isCallbackFormat ? 'Callback Query' : 'Неизвестный'));
     
-    // Удаляем hash из параметров для проверки
-    params.delete('hash');
+    // Проверяем валидность данных через middleware
+    const { verifyTelegramWebAppData } = require('../middlewares/webAppMiddleware');
+    const isValid = verifyTelegramWebAppData(initData);
     
-    // Сортируем параметры
-    const paramsList = Array.from(params.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-    
-    // Генерируем секретный ключ
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    if (!botToken) {
-      logger.error('TELEGRAM_BOT_TOKEN не задан в переменных окружения');
-      return res.status(500).json({
-        success: false,
-        message: 'Ошибка конфигурации сервера'
-      });
-    }
-    
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(botToken)
-      .digest();
-    
-    // Вычисляем ожидаемый хеш
-    const expectedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(paramsList)
-      .digest('hex');
-    
-    // Проверяем хеш
-    if (hash !== expectedHash) {
-      return res.status(401).json({
-        success: false,
-        message: 'Неверные данные инициализации'
-      });
+    if (!isValid) {
+      // Если включен режим отладки, пропускаем проверку
+      if (process.env.ALLOW_DEBUG_LOGIN === 'true' && process.env.NODE_ENV !== 'production') {
+        console.warn('Пропускаем проверку данных в режиме отладки');
+      } else {
+        console.error('ОШИБКА ПРОВЕРКИ: Неверные данные инициализации');
+        
+        // Добавляем расширенную информацию для отладки
+        const authDate = params.get('auth_date');
+        const currentTime = Math.floor(Date.now() / 1000);
+        const timeDiff = currentTime - parseInt(authDate || '0');
+        
+        return res.status(401).json({
+          success: false,
+          message: 'Неверные данные инициализации',
+          debug: {
+            format: isWebAppFormat ? 'WebApp' : (isCallbackFormat ? 'Callback Query' : 'Неизвестный'),
+            authDateAge: `${timeDiff} секунд`,
+            environment: process.env.NODE_ENV,
+            telegramInitDataLength: initData.length
+          }
+        });
+      }
     }
     
     // Получаем данные пользователя из проверенных данных
     const userData = JSON.parse(params.get('user') || '{}');
     
+    console.log('Данные пользователя получены из initData:', userData ? 'Да' : 'Нет');
+    
     if (!userData.id) {
+      console.error('ОШИБКА: Отсутствует ID пользователя в данных инициализации');
       return res.status(400).json({
         success: false,
         message: 'Отсутствует ID пользователя в данных инициализации'
       });
     }
     
+    console.log('ID пользователя из Telegram:', userData.id);
+    
     // Ищем пользователя в базе
     let user = await User.findOne({ telegramId: userData.id });
     
+    console.log('Пользователь найден в базе:', user ? 'Да' : 'Нет');
+    
     // Если пользователь не найден, создаем нового
     if (!user) {
+      console.log('Создаем нового пользователя с telegramId:', userData.id);
       user = new User({
         telegramId: userData.id,
         username: userData.username || `user_${userData.id}`,
@@ -395,6 +401,7 @@ exports.telegramAuth = async (req, res) => {
       logger.info(`New user registered via Telegram WebApp: ${user.username} (ID: ${user.telegramId})`);
     } else {
       // Обновляем информацию о пользователе
+      console.log('Обновляем информацию о существующем пользователе:', user.username);
       user.username = userData.username || user.username;
       user.firstName = userData.first_name || user.firstName;
       user.lastName = userData.last_name || user.lastName;
@@ -413,6 +420,9 @@ exports.telegramAuth = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
+    
+    console.log('JWT токен создан успешно');
+    console.log('===== ЗАВЕРШЕНИЕ ПРОЦЕССА АВТОРИЗАЦИИ TELEGRAM WEBAPP =====');
     
     return res.status(200).json({
       success: true,
@@ -433,13 +443,90 @@ exports.telegramAuth = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('КРИТИЧЕСКАЯ ОШИБКА в telegramAuth:', error.message);
+    console.error(error.stack);
     logger.error(`Error in telegramAuth: ${error.message}`);
     return res.status(500).json({
       success: false,
-      message: 'Ошибка при авторизации через Telegram'
+      message: 'Ошибка при авторизации через Telegram',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Внутренняя ошибка сервера'
     });
   }
 };
+
+/**
+ * Обработка тестовой аутентификации в режиме отладки
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
+ */
+async function handleDebugLogin(req, res) {
+  try {
+    console.log('Выполняем тестовую аутентификацию в режиме отладки');
+    
+    // Определяем ID для тестового пользователя (либо из запроса, либо используем дефолтный)
+    const debugUserId = req.body.debugUserId || 5428724191; // Используем ID из примера или константу
+    
+    // Ищем пользователя или создаем нового тестового
+    let user = await User.findOne({ telegramId: debugUserId });
+    
+    if (!user) {
+      user = new User({
+        telegramId: debugUserId,
+        username: `debug_user_${debugUserId}`,
+        firstName: 'Debug',
+        lastName: 'User',
+        registeredAt: new Date(),
+        score: 100, // Тестовое значение
+        gamesPlayed: 5,
+        correctAnswers: 20,
+        bestStreak: 4,
+        achievements: []
+      });
+      
+      await user.save();
+      logger.info(`Created debug user: ${user.username} (ID: ${user.telegramId})`);
+    }
+    
+    // Генерируем JWT токен с длительным сроком жизни для отладки
+    const jwt = require('jsonwebtoken');
+    const token = jwt.sign(
+      { telegramId: user.telegramId },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' } // 30 дней для тестирования
+    );
+    
+    console.log('Тестовая аутентификация выполнена успешно. Токен создан.');
+    console.log('===== ЗАВЕРШЕНИЕ ПРОЦЕССА ТЕСТОВОЙ АУТЕНТИФИКАЦИИ =====');
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Тестовая авторизация успешна',
+      debug: true,
+      token,
+      user: {
+        id: user._id,
+        telegramId: user.telegramId,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        photoUrl: user.photoUrl || '',
+        score: user.score,
+        gamesPlayed: user.gamesPlayed,
+        correctAnswers: user.correctAnswers,
+        bestStreak: user.bestStreak,
+        achievements: user.achievements
+      }
+    });
+  } catch (error) {
+    console.error('Ошибка при тестовой аутентификации:', error.message);
+    logger.error(`Debug login error: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Ошибка при тестовой авторизации',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Внутренняя ошибка сервера'
+    });
+  }
+}
 
 /**
  * Получить данные для инициализации мини-приложения
@@ -504,6 +591,66 @@ exports.getWebAppConfig = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении конфигурации приложения'
+    });
+  }
+};
+
+/**
+ * Обновить аватар пользователя
+ * @param {object} req - Express request object
+ * @param {object} res - Express response object
+ */
+exports.updateUserAvatar = async (req, res) => {
+  try {
+    // Проверяем авторизацию пользователя
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized'
+      });
+    }
+    
+    const { photoUrl } = req.body;
+    
+    if (!photoUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'URL фотографии обязателен'
+      });
+    }
+    
+    // Обновляем фото пользователя
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { photoUrl },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден'
+      });
+    }
+    
+    logger.info(`User ${user.username} (ID: ${user._id}) updated avatar`);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Аватар успешно обновлен',
+      user: {
+        id: user._id,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        photoUrl: user.photoUrl
+      }
+    });
+  } catch (error) {
+    logger.error(`Error updating user avatar: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Ошибка при обновлении аватара'
     });
   }
 }; 

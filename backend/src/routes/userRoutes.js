@@ -51,4 +51,11 @@ router.get('/stats', userController.getUserStats);
  */
 router.get('/webapp-config', userController.getWebAppConfig);
 
+/**
+ * @route   PUT /api/user/avatar
+ * @desc    Update user avatar
+ * @access  Private
+ */
+router.put('/avatar', userController.updateUserAvatar);
+
 module.exports = router; 

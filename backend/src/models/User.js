@@ -86,7 +86,7 @@ const UserSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-UserSchema.index({ telegramId: 1 });
+// UserSchema.index({ telegramId: 1 });
 UserSchema.index({ score: -1 }); // For leaderboard queries
 
 module.exports = mongoose.model('User', UserSchema); 

@@ -2,6 +2,8 @@
  * API Service
  * Сервис для взаимодействия с бэкэндом
  */
+import errorService from './errorService.js';
+
 export class ApiService {
   constructor() {
     // Базовый URL API
@@ -21,6 +23,16 @@ export class ApiService {
    * @returns {Promise<any>} - результат запроса
    */
   async fetchData(endpoint, method = 'GET', data = null) {
+    const transaction = errorService.startTransaction({
+      name: `${method} ${endpoint}`,
+      op: 'http.client',
+      data: { 
+        endpoint,
+        method,
+        data 
+      }
+    });
+
     try {
       const url = `${this.baseUrl}${endpoint}`;
       
@@ -66,10 +78,31 @@ export class ApiService {
         throw new Error(errorData.message || 'Ошибка при обращении к API');
       }
       
+      // Устанавливаем статус транзакции
+      transaction.setStatus('ok');
+      transaction.setData({
+        status: response.status,
+        success: true
+      });
+      
       return await response.json();
     } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      // Ошибка во время запроса
+      transaction.setStatus('internal_error');
+      errorService.captureException(error, {
+        tags: {
+          endpoint,
+          method
+        }
+      });
+      
+      // Возвращаем стандартизированный объект ошибки
+      return {
+        success: false,
+        message: error.message || 'Произошла ошибка при выполнении запроса'
+      };
+    } finally {
+      transaction.finish();
     }
   }
   

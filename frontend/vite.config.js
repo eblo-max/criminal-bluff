@@ -12,7 +12,13 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
       },
+      output: {
+        manualChunks: {
+          sentry: ['@sentry/react', '@sentry/browser']
+        }
+      }
     },
+    sourcemap: true,
   },
   server: {
     port: 3001,
@@ -22,5 +28,9 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    'process.env.APP_VERSION': JSON.stringify(process.env.npm_package_version || '1.0.0')
   }
 }); 

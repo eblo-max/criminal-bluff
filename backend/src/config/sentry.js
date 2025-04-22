@@ -1,15 +1,16 @@
 /**
  * Конфигурация Sentry для мониторинга ошибок
+ * Этот файл содержит все необходимые функции для работы с Sentry
  */
 const Sentry = require('@sentry/node');
 const { CaptureConsole } = require('@sentry/integrations');
 const { ProfilingIntegration } = require('@sentry/profiling-node');
-const { nodeProfilingIntegration } = require('@sentry/profiling-node');
 const logger = require('../utils/logger');
 
 /**
  * Инициализация Sentry
  * @param {Object} app - Express приложение
+ * @returns {Boolean} - Результат инициализации
  */
 const initSentry = (app) => {
   // Проверяем наличие DSN
@@ -26,35 +27,62 @@ const initSentry = (app) => {
       dsn: dsn,
       environment: process.env.NODE_ENV || 'development',
       integrations: [
-        // Включаем трассировку Express
-        new Sentry.Integrations.Http({ tracing: true }),
-        new Tracing.Integrations.Express({ app }),
-        // Enable console capturing integration
-        new CaptureConsole({
-          levels: ['error']
-        }),
-        // Enable profiling integration
-        nodeProfilingIntegration(),
+        // Включаем интеграцию профилирования для Node.js
         new ProfilingIntegration(),
+        // Включаем захват сообщений консоли
+        new CaptureConsole({
+          levels: ['error', 'warn']
+        })
       ],
       
-      // Настраиваем уровень трассировки
+      // Настраиваем уровень трассировки и профилирования
       tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
+      profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 0.5,
       
       // Максимальная длина значений объектов
       maxValueLength: 1000,
       
       // Настройки для бэкенда
-      serverName: 'criminal-bluff-api',
+      serverName: process.env.APP_NAME || 'backend-api',
       release: process.env.npm_package_version || '1.0.0',
       
       // Исключаем чувствительные данные
-      beforeSend(event) {
+      beforeSend(event, hint) {
+        const error = hint && hint.originalException;
+        
+        // Добавляем информацию о типе ошибки
+        if (error && error.name) {
+          event.tags = event.tags || {};
+          event.tags.error_type = error.name;
+        }
+        
         // Удаляем потенциально конфиденциальные данные
         if (event.request && event.request.headers) {
           delete event.request.headers.authorization;
           delete event.request.headers.cookie;
+          
+          // Очищаем JWT токены
+          if (event.request.headers['x-auth-token']) {
+            event.request.headers['x-auth-token'] = '[REDACTED]';
+          }
+          
+          // Очищаем initData Telegram
+          if (event.request.headers['telegram-data'] || event.request.headers['x-telegram-init-data']) {
+            event.request.headers['telegram-data'] = '[REDACTED]';
+            event.request.headers['x-telegram-init-data'] = '[REDACTED]';
+          }
         }
+
+        // Удаляем чувствительные данные из тела запроса
+        if (event.request && event.request.data) {
+          const sensitiveFields = ['password', 'token', 'secret', 'initData', 'auth_date', 'hash'];
+          sensitiveFields.forEach(field => {
+            if (event.request.data[field]) {
+              event.request.data[field] = '[REDACTED]';
+            }
+          });
+        }
+        
         return event;
       }
     });
@@ -75,15 +103,13 @@ const sentryMiddleware = (app) => {
   const dsn = process.env.SENTRY_DSN;
   
   if (!dsn) {
-    return [];
+    // Возвращаем массив с заглушкой middleware
+    return [(req, res, next) => next()];
   }
   
   return [
-    // Обработчики запроса
-    Sentry.Handlers.requestHandler(),
-    
-    // Трассировка
-    Sentry.Handlers.tracingHandler(),
+    // В Sentry v7 используем стандартный middleware
+    Sentry.Handlers.requestHandler()
   ];
 };
 
@@ -98,106 +124,51 @@ const sentryErrorHandler = () => {
     return (err, req, res, next) => next(err);
   }
   
-  return Sentry.Handlers.errorHandler({
-    shouldHandleError(error) {
-      // Отправляем в Sentry только серьезные ошибки (коды >= 500)
-      // или явно помеченные для отправки
-      return error.status >= 500 || error.sendToSentry === true;
-    }
-  });
+  return Sentry.Handlers.errorHandler();
 };
 
 /**
  * Отправка ошибки в Sentry
  * @param {Error} error - Объект ошибки
- * @param {Object} [additionalData={}] - Дополнительные данные для контекста
- * @param {String} [level='error'] - Уровень ошибки ('error', 'warning', 'info')
+ * @param {Object} [options={}] - Дополнительные опции
+ * @param {Object} [options.tags={}] - Теги для категоризации ошибки
+ * @param {Object} [options.user=null] - Информация о пользователе
+ * @param {Object} [options.extra={}] - Дополнительные данные
+ * @param {String} [options.level='error'] - Уровень ошибки ('error', 'warning', 'info')
  */
-const captureException = (error, additionalData = {}, level = 'error') => {
-  const dsn = process.env.SENTRY_DSN;
-  
-  if (!dsn) {
-    logger.error(`Error (not sent to Sentry): ${error.message}`, { error });
+const captureException = (error, { tags = {}, user = null, extra = {}, level = 'error' } = {}) => {
+  if (!process.env.SENTRY_DSN) {
+    console.error('Error captured but Sentry is not configured:', error);
     return;
   }
-  
-  try {
-    // Добавляем дополнительный контекст
-    Sentry.configureScope((scope) => {
-      // Устанавливаем уровень
-      scope.setLevel(level);
-      
-      // Добавляем тэги и контекст
-      if (additionalData.tags) {
-        Object.entries(additionalData.tags).forEach(([key, value]) => {
-          scope.setTag(key, value);
-        });
-      }
-      
-      if (additionalData.user) {
-        scope.setUser(additionalData.user);
-      }
-      
-      if (additionalData.extra) {
-        Object.entries(additionalData.extra).forEach(([key, value]) => {
-          scope.setExtra(key, value);
-        });
-      }
-    });
-    
-    // Отправляем ошибку
-    Sentry.captureException(error);
-  } catch (captureError) {
-    logger.error(`Ошибка при отправке исключения в Sentry: ${captureError.message}`);
-  }
-};
 
-/**
- * Начать транзакцию для отслеживания производительности
- * @param {Object} options - Опции транзакции
- * @param {string} options.op - Тип операции
- * @param {string} options.name - Название транзакции
- * @param {Object} [options.data={}] - Дополнительные данные транзакции
- * @param {Object} [options.tags] - Tags to associate with the transaction
- * @returns {Object} - Объект транзакции
- */
-const startTransaction = (options) => {
-  const dsn = process.env.SENTRY_DSN;
-  
-  if (!dsn) {
-    // Если Sentry не настроен, возвращаем заглушку
-    return {
-      finish: () => {},
-      setStatus: () => {},
-      setData: () => {},
-      setTag: () => {}
-    };
-  }
-  
   try {
-    const transaction = Sentry.startTransaction({
-      op: options.op || 'default',
-      name: options.name || 'unnamed',
-      data: options.data || {},
-      tags: options.tags || {}
+    // Set scope for this specific error
+    Sentry.withScope(scope => {
+      // Add user context if available
+      if (user) {
+        scope.setUser(user);
+      }
+
+      // Add additional tags
+      Object.entries(tags).forEach(([key, value]) => {
+        scope.setTag(key, value);
+      });
+
+      // Add extra context
+      Object.entries(extra).forEach(([key, value]) => {
+        scope.setExtra(key, value);
+      });
+
+      // Set error level
+      scope.setLevel(level);
+
+      // Send to Sentry
+      Sentry.captureException(error);
     });
-    
-    // Set transaction on the scope
-    Sentry.getCurrentHub().configureScope(scope => {
-      scope.setSpan(transaction);
-    });
-    
-    return transaction;
-  } catch (error) {
-    logger.error(`Ошибка при создании транзакции Sentry: ${error.message}`);
-    
-    // Возвращаем заглушку в случае ошибки
-    return {
-      finish: () => {},
-      setStatus: () => {},
-      setData: () => {},
-      setTag: () => {}
-    };
+  } catch (sentryError) {
+    console.error('Failed to send error to Sentry:', sentryError);
+    console.error('Original error:', error);
   }
 };
 
@@ -205,52 +176,75 @@ const startTransaction = (options) => {
  * Отправка сообщения в Sentry
  * @param {String} message - Сообщение
  * @param {String} [level='info'] - Уровень сообщения ('error', 'warning', 'info')
- * @param {Object} [additionalData={}] - Дополнительные данные для контекста
+ * @param {Object} [options={}] - Дополнительные опции
+ * @param {Object} [options.tags={}] - Теги для категоризации сообщения
+ * @param {Object} [options.user=null] - Информация о пользователе
+ * @param {Object} [options.extra={}] - Дополнительные данные
  */
-const captureMessage = (message, level = 'info', additionalData = {}) => {
-  const dsn = process.env.SENTRY_DSN;
-  
-  if (!dsn) {
+const captureMessage = (message, level = 'info', { tags = {}, user = null, extra = {} } = {}) => {
+  if (!process.env.SENTRY_DSN) {
+    console.log(`Message captured but Sentry is not configured: [${level}] ${message}`);
     return;
   }
-  
+
   try {
-    // Добавляем дополнительный контекст
-    Sentry.configureScope((scope) => {
-      // Устанавливаем уровень
+    // Set scope for this specific message
+    Sentry.withScope(scope => {
+      // Add user context if available
+      if (user) {
+        scope.setUser(user);
+      }
+
+      // Add additional tags
+      Object.entries(tags).forEach(([key, value]) => {
+        scope.setTag(key, value);
+      });
+
+      // Add extra context
+      Object.entries(extra).forEach(([key, value]) => {
+        scope.setExtra(key, value);
+      });
+
+      // Set level
       scope.setLevel(level);
-      
-      // Добавляем тэги и контекст
-      if (additionalData.tags) {
-        Object.entries(additionalData.tags).forEach(([key, value]) => {
-          scope.setTag(key, value);
-        });
-      }
-      
-      if (additionalData.user) {
-        scope.setUser(additionalData.user);
-      }
-      
-      if (additionalData.extra) {
-        Object.entries(additionalData.extra).forEach(([key, value]) => {
-          scope.setExtra(key, value);
-        });
-      }
+
+      // Send to Sentry
+      Sentry.captureMessage(message);
     });
-    
-    // Отправляем сообщение
-    Sentry.captureMessage(message, level);
-  } catch (captureError) {
-    logger.error(`Ошибка при отправке сообщения в Sentry: ${captureError.message}`);
+  } catch (error) {
+    console.error('Failed to send message to Sentry:', error);
   }
 };
 
+/**
+ * Добавляет тестовый маршрут для проверки отправки ошибок в Sentry
+ * @param {Object} app - Express приложение
+ */
+const addSentryTestRoute = (app) => {
+  // Добавляем только в режиме разработки или если явно указана переменная окружения
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SENTRY_TEST_ROUTE === 'true') {
+    app.get('/debug-sentry', function mainHandler(req, res) {
+      // Тест отправки ошибки в Sentry
+      try {
+        throw new Error('Тестовая ошибка из API!');
+      } catch (error) {
+        Sentry.captureException(error);
+        res.status(200).json({
+          success: true,
+          message: 'Тестовая ошибка отправлена в Sentry!'
+        });
+      }
+    });
+  }
+};
+
+// Экспортируем Sentry и вспомогательные функции
 module.exports = {
+  Sentry,
   initSentry,
   sentryMiddleware,
   sentryErrorHandler,
   captureException,
   captureMessage,
-  startTransaction,
-  Sentry
+  addSentryTestRoute
 }; 

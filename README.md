@@ -110,3 +110,118 @@ criminal-bluff/
 ## Лицензия
 
 MIT 
+
+# Criminal Bluff - Мониторинг ошибок с Sentry
+
+## Описание
+
+Criminal Bluff - это Telegram Mini App с мониторингом ошибок через Sentry. Приложение состоит из фронтенда (React) и бэкенда (Node.js с Express).
+
+## Структура проекта
+
+```
+project/
+├── backend/          # Бэкенд на Node.js + Express
+│   ├── src/
+│   │   ├── config/
+│   │   │   ├── sentry.js   # Конфигурация Sentry для бэкенда
+│   │   ├── instrument.js   # Экспорт Sentry для использования в приложении
+│   └── ...
+├── frontend/         # Фронтенд на React
+│   ├── src/
+│   │   ├── services/
+│   │   │   ├── errorService.js  # Сервис для работы с Sentry
+│   └── ...
+└── ...
+```
+
+## Настройка Sentry
+
+### Бэкенд
+
+1. В файле `backend/.env` установите переменные окружения:
+
+```
+SENTRY_DSN=https://your-dsn-key@sentry.io/project-id
+NODE_ENV=development|production
+APP_NAME=your-app-name
+```
+
+2. Инициализация Sentry выполняется при старте приложения:
+
+```javascript
+const { initSentry } = require('./config/sentry');
+initSentry(app); // передаем экземпляр Express
+```
+
+3. Для отправки ошибок используйте:
+
+```javascript
+const { captureException } = require('./config/sentry');
+
+try {
+  // ваш код
+} catch (error) {
+  captureException(error, {
+    tags: { component: 'auth' },
+    user: { id: userId }
+  });
+}
+```
+
+### Фронтенд
+
+1. В файле `frontend/.env` установите:
+
+```
+VITE_SENTRY_DSN=https://your-dsn-key@sentry.io/project-id
+VITE_NODE_ENV=development|production
+VITE_APP_VERSION=1.0.0
+```
+
+2. Инициализируйте сервис ошибок в вашем приложении:
+
+```javascript
+import errorService from './services/errorService';
+
+// В начале приложения
+errorService.init(userObject);
+```
+
+3. Для отправки ошибок используйте:
+
+```javascript
+import errorService from './services/errorService';
+
+try {
+  // ваш код
+} catch (error) {
+  errorService.captureException(error, {
+    tags: { action: 'login' }
+  });
+}
+```
+
+## Тестирование Sentry
+
+Для проверки интеграции с Sentry используйте эндпоинт:
+
+```
+GET /debug-sentry
+```
+
+Этот эндпоинт доступен только в режиме разработки или если включен флаг `ENABLE_SENTRY_TEST_ROUTE=true`.
+
+## Рекомендации по мониторингу
+
+1. **Фильтрация ошибок**: Настройте фильтры в Sentry для игнорирования несущественных ошибок.
+2. **Контекст ошибок**: Всегда добавляйте теги и дополнительную информацию для лучшей диагностики.
+3. **Транзакции**: Используйте транзакции для мониторинга производительности критичных операций.
+
+## Типы ошибок для отслеживания
+
+- Ошибки API (statusCode, endpoint)
+- Ошибки авторизации (authType, failureReason)
+- Проблемы с Telegram API (method, params)
+- Ошибки БД (operation, entity)
+- Клиентские ошибки JavaScript (browser, component) 

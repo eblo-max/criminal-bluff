@@ -11,10 +11,8 @@ const connectDB = async () => {
   try {
     const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/criminal_bluff';
     
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    };
+    // Удаляем устаревшие опции, так как они включены по умолчанию в mongoose 6+
+    const options = {};
     
     await mongoose.connect(uri, options);
     

@@ -9,12 +9,148 @@
   <meta name="HandheldFriendly" content="True">
   <meta name="robots" content="noindex, nofollow">
   <title>Криминальный Блеф</title>
+  <meta name="description" content="Детективная игра, где нужно определить правду среди лжи">
+  <link rel="icon" href="src/assets/favicon.ico">
   <!-- Подключение скриптов Telegram WebApp -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <!-- Основные стили -->
   <link rel="stylesheet" href="src/styles/main.css">
   <!-- Шрифты -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Скрипт для диагностики Telegram WebApp -->
+  <script>
+    // Записываем время загрузки для измерения производительности
+    window.appStartTime = Date.now();
+    
+    // Функция для логирования в консоль с отметкой времени
+    function logWithTime(message, obj) {
+      const timeElapsed = Date.now() - window.appStartTime;
+      const formattedTime = `+${timeElapsed}ms`;
+      if (obj) {
+        console.log(`${formattedTime} | ${message}`, obj);
+      } else {
+        console.log(`${formattedTime} | ${message}`);
+      }
+    }
+    
+    // Включаем debug_mode если нужно
+    if (window.location.search.includes('debug=1')) {
+      localStorage.setItem('debug_mode', 'true');
+      logWithTime('Debug mode активирован');
+    }
+    
+    // Создаем объект для хранения диагностической информации
+    window.diagnostics = {
+      errors: [],
+      warnings: [],
+      events: [],
+      telegramInfo: null
+    };
+    
+    // Переопределяем некоторые методы для сбора логов
+    const originalConsoleError = console.error;
+    console.error = function() {
+      window.diagnostics.errors.push({
+        time: new Date().toISOString(),
+        arguments: Array.from(arguments).map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg) : arg
+        ).join(' ')
+      });
+      return originalConsoleError.apply(console, arguments);
+    };
+    
+    const originalConsoleWarn = console.warn;
+    console.warn = function() {
+      window.diagnostics.warnings.push({
+        time: new Date().toISOString(),
+        arguments: Array.from(arguments).map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg) : arg
+        ).join(' ')
+      });
+      return originalConsoleWarn.apply(console, arguments);
+    };
+    
+    // Сохраняем информацию о WebApp
+    document.addEventListener('DOMContentLoaded', function() {
+      logWithTime('DOM загружен');
+      
+      // Проверяем наличие Telegram WebApp
+      if (window.Telegram && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+        window.diagnostics.telegramInfo = {
+          available: true,
+          version: tg.version,
+          platform: tg.platform,
+          viewportHeight: tg.viewportHeight,
+          viewportStableHeight: tg.viewportStableHeight,
+          headerColor: tg.headerColor,
+          backgroundColor: tg.backgroundColor,
+          initDataUnsafe: tg.initDataUnsafe ? 'Доступно' : 'Недоступно',
+          initData: tg.initData ? tg.initData.substring(0, 50) + '...' : 'Недоступно'
+        };
+        logWithTime('Telegram WebApp доступен', window.diagnostics.telegramInfo);
+        
+        // Отображаем информацию в дебаг-панели
+        updateDebugPanel();
+      } else {
+        window.diagnostics.telegramInfo = {
+          available: false,
+          error: 'Telegram WebApp не обнаружен'
+        };
+        logWithTime('Telegram WebApp недоступен!');
+        updateDebugPanel();
+      }
+    });
+    
+    // Функция для обновления дебаг-панели
+    function updateDebugPanel() {
+      const debugPanel = document.getElementById('debug-panel');
+      if (!debugPanel) return;
+      
+      const telegramInfo = window.diagnostics.telegramInfo;
+      if (!telegramInfo) {
+        debugPanel.innerHTML = '<p>Загрузка информации...</p>';
+        return;
+      }
+      
+      let html = `<h3>Telegram WebApp: ${telegramInfo.available ? 'Доступен' : 'Недоступен'}</h3>`;
+      
+      if (telegramInfo.available) {
+        html += `
+          <ul>
+            <li>Версия: ${telegramInfo.version}</li>
+            <li>Платформа: ${telegramInfo.platform}</li>
+            <li>Viewport высота: ${telegramInfo.viewportHeight}px</li>
+            <li>InitData: ${telegramInfo.initData || 'Недоступно'}</li>
+          </ul>
+        `;
+      } else {
+        html += `<p>Ошибка: ${telegramInfo.error}</p>`;
+      }
+      
+      html += `<h3>Ошибки (${window.diagnostics.errors.length}):</h3>`;
+      if (window.diagnostics.errors.length > 0) {
+        html += '<ul>';
+        window.diagnostics.errors.slice(-5).forEach(error => {
+          html += `<li>${error.time}: ${error.arguments}</li>`;
+        });
+        html += '</ul>';
+      } else {
+        html += '<p>Нет ошибок</p>';
+      }
+      
+      debugPanel.innerHTML = html;
+    }
+    
+    // Обновляем дебаг-панель каждые 2 секунды
+    setInterval(updateDebugPanel, 2000);
+    
+    // Ловим все глобальные ошибки
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error('Global error:', message, source, lineno, colno);
+      return false;
+    };
+  </script>
 </head>
 <body>
   <div class="app">
@@ -185,9 +321,78 @@
         <div class="user-rank-value" id="user-rank">#0</div>
       </div>
     </div>
+
+    <!-- Экран тестирования Sentry -->
+    <div class="screen" id="sentry-test-screen">
+      <div class="sentry-test-header">
+        <button class="back-btn" id="sentry-test-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Тестирование Sentry</h2>
+      </div>
+      <div class="sentry-test-container">
+        <!-- Содержимое будет добавлено динамически через SentryTest.js -->
+      </div>
+    </div>
   </div>
+
+  <!-- Отладочная панель (видима только в режиме отладки) -->
+  <div id="debug-panel" class="debug-panel" style="display:none;"></div>
+
+  <!-- Отладочная кнопка для активации debug-режима (невидима по умолчанию) -->
+  <div id="debug-toggle" class="debug-toggle" onclick="activateDebugMode()"></div>
 
   <!-- JS -->
   <script type="module" src="src/app.js"></script>
+  <script>
+    // Показывать отладочную панель в режиме отладки
+    if (localStorage.getItem('debug_mode') === 'true') {
+      document.getElementById('debug-panel').style.display = 'block';
+      logWithTime('Отладочная панель активирована');
+    }
+
+    // Функция активации debug-режима
+    function activateDebugMode() {
+      localStorage.setItem('debug_mode', 'true');
+      
+      // Показать отладочную панель
+      const debugPanel = document.getElementById('debug-panel');
+      if (debugPanel) {
+        debugPanel.style.display = 'block';
+      }
+      
+      // Перезагрузить страницу с параметром debug
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('debug', '1');
+      window.location.href = currentUrl.toString();
+    }
+    
+    // Функция для добавления секретного жеста активации
+    function setupDebugGesture() {
+      let taps = 0;
+      let lastTap = 0;
+      
+      // При 5 быстрых нажатиях на лого активируем отладку
+      document.querySelector('.splash-logo').addEventListener('click', function(e) {
+        const curTime = new Date().getTime();
+        const tapTime = curTime - lastTap;
+        
+        if (tapTime < 500 && tapTime > 0) {
+          taps++;
+          if (taps >= 5) {
+            activateDebugMode();
+            taps = 0;
+          }
+        } else {
+          taps = 1;
+        }
+        
+        lastTap = curTime;
+      });
+    }
+    
+    // Запускаем настройку жеста после загрузки страницы
+    document.addEventListener('DOMContentLoaded', setupDebugGesture);
+  </script>
 </body>
 </html> 

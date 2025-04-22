@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="format-detection" content="telephone=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="MobileOptimized" content="176">
+  <meta name="HandheldFriendly" content="True">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Криминальный Блеф</title>
+  <meta name="description" content="Детективная игра, где нужно определить правду среди лжи">
+  <link rel="icon" href="src/assets/favicon.ico">
+  <!-- Подключение скриптов Telegram WebApp -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Основные стили -->
+  <!-- Шрифты -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Скрипт для диагностики Telegram WebApp -->
+  <script>
+    // Записываем время загрузки для измерения производительности
+    window.appStartTime = Date.now();
+    
+    // Функция для логирования в консоль с отметкой времени
+    function logWithTime(message, obj) {
+      const timeElapsed = Date.now() - window.appStartTime;
+      const formattedTime = `+${timeElapsed}ms`;
+      if (obj) {
+        console.log(`${formattedTime} | ${message}`, obj);
+      } else {
+        console.log(`${formattedTime} | ${message}`);
+      }
+    }
+    
+    // Включаем debug_mode если нужно
+    if (window.location.search.includes('debug=1')) {
+      localStorage.setItem('debug_mode', 'true');
+      logWithTime('Debug mode активирован');
+    }
+    
+    // Создаем объект для хранения диагностической информации
+    window.diagnostics = {
+      errors: [],
+      warnings: [],
+      events: [],
+      telegramInfo: null
+    };
+    
+    // Переопределяем некоторые методы для сбора логов
+    const originalConsoleError = console.error;
+    console.error = function() {
+      window.diagnostics.errors.push({
+        time: new Date().toISOString(),
+        arguments: Array.from(arguments).map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg) : arg
+        ).join(' ')
+      });
+      return originalConsoleError.apply(console, arguments);
+    };
+    
+    const originalConsoleWarn = console.warn;
+    console.warn = function() {
+      window.diagnostics.warnings.push({
+        time: new Date().toISOString(),
+        arguments: Array.from(arguments).map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg) : arg
+        ).join(' ')
+      });
+      return originalConsoleWarn.apply(console, arguments);
+    };
+    
+    // Сохраняем информацию о WebApp
+    document.addEventListener('DOMContentLoaded', function() {
+      logWithTime('DOM загружен');
+      
+      // Проверяем наличие Telegram WebApp
+      if (window.Telegram && window.Telegram.WebApp) {
+        const tg = window.Telegram.WebApp;
+        window.diagnostics.telegramInfo = {
+          available: true,
+          version: tg.version,
+          platform: tg.platform,
+          viewportHeight: tg.viewportHeight,
+          viewportStableHeight: tg.viewportStableHeight,
+          headerColor: tg.headerColor,
+          backgroundColor: tg.backgroundColor,
+          initDataUnsafe: tg.initDataUnsafe ? 'Доступно' : 'Недоступно',
+          initData: tg.initData ? tg.initData.substring(0, 50) + '...' : 'Недоступно'
+        };
+        logWithTime('Telegram WebApp доступен', window.diagnostics.telegramInfo);
+        
+        // Отображаем информацию в дебаг-панели
+        updateDebugPanel();
+      } else {
+        window.diagnostics.telegramInfo = {
+          available: false,
+          error: 'Telegram WebApp не обнаружен'
+        };
+        logWithTime('Telegram WebApp недоступен!');
+        updateDebugPanel();
+      }
+    });
+    
+    // Функция для обновления дебаг-панели
+    function updateDebugPanel() {
+      const debugPanel = document.getElementById('debug-panel');
+      if (!debugPanel) return;
+      
+      const telegramInfo = window.diagnostics.telegramInfo;
+      if (!telegramInfo) {
+        debugPanel.innerHTML = '<p>Загрузка информации...</p>';
+        return;
+      }
+      
+      let html = `<h3>Telegram WebApp: ${telegramInfo.available ? 'Доступен' : 'Недоступен'}</h3>`;
+      
+      if (telegramInfo.available) {
+        html += `
+          <ul>
+            <li>Версия: ${telegramInfo.version}</li>
+            <li>Платформа: ${telegramInfo.platform}</li>
+            <li>Viewport высота: ${telegramInfo.viewportHeight}px</li>
+            <li>InitData: ${telegramInfo.initData || 'Недоступно'}</li>
+          </ul>
+        `;
+      } else {
+        html += `<p>Ошибка: ${telegramInfo.error}</p>`;
+      }
+      
+      html += `<h3>Ошибки (${window.diagnostics.errors.length}):</h3>`;
+      if (window.diagnostics.errors.length > 0) {
+        html += '<ul>';
+        window.diagnostics.errors.slice(-5).forEach(error => {
+          html += `<li>${error.time}: ${error.arguments}</li>`;
+        });
+        html += '</ul>';
+      } else {
+        html += '<p>Нет ошибок</p>';
+      }
+      
+      debugPanel.innerHTML = html;
+    }
+    
+    // Обновляем дебаг-панель каждые 2 секунды
+    setInterval(updateDebugPanel, 2000);
+    
+    // Ловим все глобальные ошибки
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error('Global error:', message, source, lineno, colno);
+      return false;
+    };
+  </script>
+  <script type="module" crossorigin src="/assets/main-C9lL6Qhj.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/sentry-Dom9mHGq.js">
+  <link rel="stylesheet" crossorigin href="/assets/main-sPaDXgZf.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Заставка -->
+    <div class="splash-screen">
+      <div class="splash-logo">
+        <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAiIGhlaWdodD0iMTIwIiB2aWV3Qm94PSIwIDAgMTIwIDEyMCI+DQogIDwhLS0g0KTQvtC9IC0tPg0KICA8Y2lyY2xlIGN4PSI2MCIgY3k9IjYwIiByPSI1NSIgZmlsbD0iIzFmMWYxZiIgc3Ryb2tlPSIjZmY0ZDRkIiBzdHJva2Utd2lkdGg9IjMiLz4NCiAgDQogIDwhLS0g0J3QtdC+0L3QvtCy0L7QtSDRgdCy0LXRh9C10L3QuNC1IC0tPg0KICA8Y2lyY2xlIGN4PSI2MCIgY3k9IjYwIiByPSI1MiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY0ZDRkIiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNSI+DQogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0ib3BhY2l0eSIgdmFsdWVzPSIwLjM7MC43OzAuMyIgZHVyPSIzcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiIC8+DQogICAgPGFuaW1hdGUgYXR0cmlidXRlTmFtZT0iciIgdmFsdWVzPSI1Mjs1NDs1MiIgZHVyPSIzcyIgcmVwZWF0Q291bnQ9ImluZGVmaW5pdGUiIC8+DQogIDwvY2lyY2xlPg0KICANCiAgPCEtLSDQodC40LzQstC+0Lsg0LvRg9C/0YsgLS0+DQogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDYwLCA2MCkgc2NhbGUoMC41KSB0cmFuc2xhdGUoLTYwLCAtNjApIj4NCiAgICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSIyMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY0ZDRkIiBzdHJva2Utd2lkdGg9IjUiLz4NCiAgICA8bGluZSB4MT0iNjUiIHkxPSI2NSIgeDI9Ijg1IiB5Mj0iODUiIHN0cm9rZT0iI2ZmNGQ0ZCIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4NCiAgPC9nPg0KICANCiAgPCEtLSDQodC40LzQstC+0Lsg0L3QsNGA0YPRh9C90LjQutC+0LIgLS0+DQogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDMwLCA3MCkiPg0KICAgIDxjaXJjbGUgY3g9IjAiIGN5PSIwIiByPSI4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZjRkNGQiIHN0cm9rZS13aWR0aD0iMiIvPg0KICAgIDxjaXJjbGUgY3g9IjIwIiBjeT0iMCIgcj0iOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmY0ZDRkIiBzdHJva2Utd2lkdGg9IjIiLz4NCiAgICA8bGluZSB4MT0iOCIgeTE9IjAiIHgyPSIxMiIgeTI9IjAiIHN0cm9rZT0iI2ZmNGQ0ZCIgc3Ryb2tlLXdpZHRoPSIyIi8+DQogIDwvZz4NCiAgDQogIDwhLS0g0KLQtdC60YHRgiAi0JrQkSIgLS0+DQogIDx0ZXh0IHg9IjYwIiB5PSI2NSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI2ZmNGQ0ZCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+0JrQkTwvdGV4dD4NCiAgDQogIDwhLS0g0JTQtdC60L7RgNCw0YLQuNCy0L3Ri9C1INGN0LvQtdC80LXQvdGC0YsgLS0+DQogIDxwYXRoIGQ9Ik0zMCw4NSBMOTAsODUiIHN0cm9rZT0iI2ZmNGQ0ZCIgc3Ryb2tlLXdpZHRoPSIyIiAvPg0KICA8cGF0aCBkPSJNMzUsOTUgTDg1LDk1IiBzdHJva2U9IiNmZjRkNGQiIHN0cm9rZS13aWR0aD0iMiIgLz4NCjwvc3ZnPiA=" alt="Криминальный Блеф">
+      </div>
+      <h1 class="splash-title">Криминальный Блеф</h1>
+      <p class="splash-subtitle">Тест на детективные способности</p>
+    </div>
+
+    <!-- Стартовый экран -->
+    <div class="screen" id="start-screen">
+      <div class="start-content">
+        <h1 class="app-title">Криминальный Блеф</h1>
+        <p class="app-description">Найди ошибки преступников в реальных историях</p>
+        <div class="button-container">
+          <button class="btn btn-primary" id="start-game-btn">Начать игру</button>
+          <button class="btn btn-secondary" id="profile-btn">Мой профиль</button>
+          <button class="btn btn-secondary" id="leaderboard-btn">Рейтинг</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Игровой экран -->
+    <div class="screen" id="game-screen">
+      <div class="game-header">
+        <div class="timer">
+          <div class="timer-bar"></div>
+          <div class="timer-text">15</div>
+        </div>
+        <div class="progress">
+          <span class="current-question">1</span>/<span class="total-questions">5</span>
+        </div>
+        <div class="streak">
+          <span class="streak-count">0</span>
+          <span class="streak-icon">🔥</span>
+        </div>
+      </div>
+      <div class="story-container">
+        <p class="story-text"></p>
+      </div>
+      <div class="options-container">
+        <button class="option" data-index="0"></button>
+        <button class="option" data-index="1"></button>
+        <button class="option" data-index="2"></button>
+      </div>
+    </div>
+
+    <!-- Экран результата ответа -->
+    <div class="screen" id="answer-result-screen">
+      <div class="result-container">
+        <div class="result-header">
+          <div class="result-icon"></div>
+          <h2 class="result-title"></h2>
+        </div>
+        <div class="explanation-container">
+          <p class="explanation-text"></p>
+        </div>
+        <div class="score-info">
+          <div class="score-item">
+            <span class="score-label">Очки:</span>
+            <span class="score-value"></span>
+          </div>
+          <div class="score-item">
+            <span class="score-label">Серия:</span>
+            <span class="streak-value"></span>
+          </div>
+        </div>
+        <button class="btn btn-primary next-btn">Следующая история</button>
+      </div>
+    </div>
+
+    <!-- Экран результатов игры -->
+    <div class="screen" id="game-result-screen">
+      <div class="game-result-container">
+        <h2 class="result-heading">Результаты</h2>
+        <div class="result-stats">
+          <div class="stat-item">
+            <div class="stat-value" id="correct-answers">0</div>
+            <div class="stat-label">Правильных ответов</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="total-score">0</div>
+            <div class="stat-label">Очков заработано</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="best-streak">0</div>
+            <div class="stat-label">Лучшая серия</div>
+          </div>
+        </div>
+        <div class="result-actions">
+          <button class="btn btn-primary" id="play-again-btn">Играть снова</button>
+          <button class="btn btn-secondary" id="share-result-btn">Поделиться</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Экран профиля -->
+    <div class="screen" id="profile-screen">
+      <div class="profile-header">
+        <button class="back-btn" id="profile-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Мой профиль</h2>
+      </div>
+      <div class="profile-container">
+        <div class="user-info">
+          <div class="user-avatar">
+            <img src="src/assets/default-avatar.svg" alt="Avatar" id="user-avatar">
+          </div>
+          <div class="user-name" id="user-name"></div>
+        </div>
+        <div class="stats-container">
+          <div class="stat-row">
+            <div class="stat-label">Всего игр:</div>
+            <div class="stat-value" id="games-played">0</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">Процент верных:</div>
+            <div class="stat-value" id="accuracy">0%</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">Лучшая серия:</div>
+            <div class="stat-value" id="profile-best-streak">0</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-label">В рейтинге:</div>
+            <div class="stat-value" id="rank-position">#0</div>
+          </div>
+        </div>
+        <div class="achievements-container">
+          <h3 class="section-title">Достижения</h3>
+          <div class="achievements-list" id="achievements-list">
+            <!-- Достижения будут добавлены динамически -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Экран рейтинга -->
+    <div class="screen" id="leaderboard-screen">
+      <div class="leaderboard-header">
+        <button class="back-btn" id="leaderboard-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Рейтинг</h2>
+      </div>
+      <div class="leaderboard-tabs">
+        <button class="tab-btn active" data-period="daily">Сегодня</button>
+        <button class="tab-btn" data-period="weekly">Неделя</button>
+        <button class="tab-btn" data-period="all-time">За все время</button>
+      </div>
+      <div class="leaderboard-container">
+        <div class="leaderboard-list" id="leaderboard-list">
+          <!-- Записи рейтинга будут добавлены динамически -->
+        </div>
+        <div class="neighbors-container" id="neighbors-container">
+          <h3 class="section-title">Ваше окружение</h3>
+          <div class="neighbors-list" id="neighbors-list">
+            <!-- Соседи пользователя в рейтинге будут добавлены динамически -->
+          </div>
+        </div>
+      </div>
+      <div class="user-rank-container">
+        <div class="user-rank-label">Ваша позиция:</div>
+        <div class="user-rank-value" id="user-rank">#0</div>
+      </div>
+    </div>
+
+    <!-- Экран тестирования Sentry -->
+    <div class="screen" id="sentry-test-screen">
+      <div class="sentry-test-header">
+        <button class="back-btn" id="sentry-test-back-btn">
+          <span class="back-icon">←</span>
+        </button>
+        <h2 class="screen-title">Тестирование Sentry</h2>
+      </div>
+      <div class="sentry-test-container">
+        <!-- Содержимое будет добавлено динамически через SentryTest.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Отладочная панель (видима только в режиме отладки) -->
+  <div id="debug-panel" class="debug-panel" style="display:none;"></div>
+
+  <!-- Отладочная кнопка для активации debug-режима (невидима по умолчанию) -->
+  <div id="debug-toggle" class="debug-toggle" onclick="activateDebugMode()"></div>
+
+  <!-- JS -->
+  <script>
+    // Показывать отладочную панель в режиме отладки
+    if (localStorage.getItem('debug_mode') === 'true') {
+      document.getElementById('debug-panel').style.display = 'block';
+      logWithTime('Отладочная панель активирована');
+    }
+
+    // Функция активации debug-режима
+    function activateDebugMode() {
+      localStorage.setItem('debug_mode', 'true');
+      
+      // Показать отладочную панель
+      const debugPanel = document.getElementById('debug-panel');
+      if (debugPanel) {
+        debugPanel.style.display = 'block';
+      }
+      
+      // Перезагрузить страницу с параметром debug
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('debug', '1');
+      window.location.href = currentUrl.toString();
+    }
+    
+    // Функция для добавления секретного жеста активации
+    function setupDebugGesture() {
+      let taps = 0;
+      let lastTap = 0;
+      
+      // При 5 быстрых нажатиях на лого активируем отладку
+      document.querySelector('.splash-logo').addEventListener('click', function(e) {
+        const curTime = new Date().getTime();
+        const tapTime = curTime - lastTap;
+        
+        if (tapTime < 500 && tapTime > 0) {
+          taps++;
+          if (taps >= 5) {
+            activateDebugMode();
+            taps = 0;
+          }
+        } else {
+          taps = 1;
+        }
+        
+        lastTap = curTime;
+      });
+    }
+    
+    // Запускаем настройку жеста после загрузки страницы
+    document.addEventListener('DOMContentLoaded', setupDebugGesture);
+  </script>
+</body>
+</html> 

@@ -31,15 +31,23 @@ export class GameService {
     
     // Начало ответа (для расчета времени ответа)
     this.answerStartTime = null;
+    
+    // Колбэки для игровых событий
+    this.onGameStart = null;
+    this.onAnswerSubmit = null;
+    this.onNextStory = null;
+    this.onGameComplete = null;
+    this.onTimeOut = null;
   }
   
   /**
    * Начало новой игры
    */
   async startGame() {
+    // Создаем транзакцию Sentry для отслеживания производительности
     const transaction = errorService.startTransaction({
-      op: 'game',
-      name: 'start_game'
+      name: 'startGame',
+      op: 'game.start'
     });
     
     try {
@@ -59,18 +67,30 @@ export class GameService {
         
         // Отображаем первую историю
         this.displayStory(this.currentStoryIndex);
+        
+        // Вызываем колбэк начала игры
+        if (this.onGameStart) {
+          this.onGameStart(this.gameSession);
+        }
+        
+        this.uiService.hideLoading();
+        transaction.setStatus('ok');
+        return this.gameSession;
       } else {
         throw new Error('Не удалось начать игру. Пожалуйста, попробуйте позже.');
       }
-      
-      this.uiService.hideLoading();
-      transaction.finish();
     } catch (error) {
       console.error('Start game error:', error);
       this.uiService.hideLoading();
       this.uiService.showError('Не удалось начать игру. Пожалуйста, попробуйте позже.');
-      transaction.setStatus('error');
+      transaction.setStatus('internal_error');
+      errorService.captureException(error, {
+        tags: {
+          gameAction: 'startGame'
+        }
+      });
       transaction.finish();
+      return null;
     }
   }
   
@@ -172,9 +192,14 @@ export class GameService {
    * @param {boolean} isTimeout - флаг окончания времени
    */
   async submitAnswer(optionIndex, isTimeout = false) {
+    // Создаем транзакцию Sentry для отслеживания производительности
     const transaction = errorService.startTransaction({
-      op: 'game',
-      name: 'submit_answer'
+      name: 'submitAnswer',
+      op: 'game.answer',
+      data: {
+        storyIndex: this.currentStoryIndex,
+        optionIndex: optionIndex
+      }
     });
     
     try {
@@ -217,14 +242,26 @@ export class GameService {
         
         // Обновляем UI счета
         document.querySelector('.streak-count').textContent = this.gameSession.streak || 0;
+        
+        // Вызываем колбэк отправки ответа
+        if (this.onAnswerSubmit) {
+          this.onAnswerSubmit(optionIndex, result.correctIndex, result.explanation);
+        }
       }
       
+      transaction.setStatus('ok');
       transaction.finish();
     } catch (error) {
       console.error('Submit answer error:', error);
       this.uiService.hideLoading();
       this.uiService.showError('Ошибка при отправке ответа. Пожалуйста, попробуйте еще раз.');
-      transaction.setStatus('error');
+      transaction.setStatus('internal_error');
+      errorService.captureException(error, {
+        tags: {
+          gameAction: 'submitAnswer',
+          storyIndex: this.currentStoryIndex
+        }
+      });
       transaction.finish();
       
       // Метрика ошибок ответа на вопрос
@@ -302,18 +339,60 @@ export class GameService {
    * Переход к следующей истории
    */
   async nextStory() {
-    this.currentStoryIndex++;
+    // Создаем транзакцию Sentry для отслеживания производительности
+    const transaction = errorService.startTransaction({
+      name: 'nextStory',
+      op: 'game.next',
+      data: {
+        currentStoryIndex: this.currentStoryIndex,
+        totalStories: this.gameSession?.stories.length
+      }
+    });
     
-    // Если есть еще истории, показываем следующую
-    if (this.currentStoryIndex < this.gameSession.stories.length) {
-      // Показываем игровой экран
-      this.uiService.showScreen(document.getElementById('game-screen'));
+    try {
+      if (!this.gameSession || !this.gameSession.gameId) {
+        transaction.setStatus('invalid_argument');
+        errorService.captureMessage('Attempted to go to next story without active game', 'warning');
+        this.uiService.showError('Не удалось перейти к следующей истории: игра не активна.');
+        return;
+      }
       
-      // Отображаем следующую историю
-      this.displayStory(this.currentStoryIndex);
-    } else {
-      // Завершаем игру, если истории закончились
-      this.finishGame();
+      // Увеличиваем индекс текущей истории
+      this.currentStoryIndex++;
+      
+      // Проверяем, есть ли еще истории
+      if (this.currentStoryIndex < this.gameSession.stories.length) {
+        const currentStory = this.gameSession.stories[this.currentStoryIndex];
+        
+        // Отображаем следующую историю
+        this.displayStory(this.currentStoryIndex);
+        
+        // Вызываем колбэк следующей истории
+        if (this.onNextStory) {
+          this.onNextStory(
+            currentStory,
+            this.currentStoryIndex,
+            this.gameSession.stories.length
+          );
+        }
+      } else {
+        // Если истории закончились, завершаем игру
+        await this.finishGame();
+      }
+      
+      transaction.setStatus('ok');
+    } catch (error) {
+      console.error('Next story error:', error);
+      this.uiService.showError('Произошла ошибка при переходе к следующей истории. Попробуйте снова.');
+      transaction.setStatus('internal_error');
+      errorService.captureException(error, {
+        tags: {
+          gameAction: 'nextStory',
+          storyIndex: this.currentStoryIndex
+        }
+      });
+    } finally {
+      transaction.finish();
     }
   }
   
@@ -321,13 +400,19 @@ export class GameService {
    * Завершение игры
    */
   async finishGame() {
+    // Создаем транзакцию Sentry для отслеживания производительности
     const transaction = errorService.startTransaction({
-      op: 'game',
-      name: 'finish_game'
+      name: 'finishGame',
+      op: 'game.finish'
     });
     
     try {
-      this.uiService.showLoading();
+      if (!this.gameSession || !this.gameSession.gameId) {
+        transaction.setStatus('invalid_argument');
+        errorService.captureMessage('Attempted to finish game without active game', 'warning');
+        this.uiService.showError('Не удалось завершить игру: игра не активна.');
+        return;
+      }
       
       // Отправляем данные о завершении игры
       const gameData = {
@@ -349,7 +434,16 @@ export class GameService {
       // Отображаем экран результатов
       this.showGameResults();
       
-      transaction.finish();
+      // Сбрасываем данные игры
+      this.gameSession = null;
+      this.currentStoryIndex = 0;
+      
+      // Вызываем колбэк завершения игры
+      if (this.onGameComplete) {
+        this.onGameComplete(this.gameResults);
+      }
+      
+      transaction.setStatus('ok');
     } catch (error) {
       console.error('Finish game error:', error);
       this.uiService.hideLoading();
@@ -357,20 +451,14 @@ export class GameService {
       
       // Всё равно показываем результаты
       this.showGameResults();
-      transaction.setStatus('error');
-      transaction.finish();
-      
-      // Критическая ошибка, так как влияет на сохранение результатов
+      transaction.setStatus('internal_error');
       errorService.captureException(error, {
         tags: {
-          component: 'gameService',
-          method: 'finishGame',
-          gameId: this.gameSession.id
-        },
-        level: 'fatal'
+          gameAction: 'finishGame'
+        }
       });
-      
-      throw error;
+    } finally {
+      transaction.finish();
     }
   }
   
@@ -395,5 +483,68 @@ export class GameService {
    */
   getGameResults() {
     return this.gameResults;
+  }
+  
+  /**
+   * Обработка истечения времени на ответ
+   */
+  timeOut() {
+    if (this.onTimeOut) {
+      this.onTimeOut();
+    }
+    
+    // По умолчанию просто переходим к следующей истории
+    setTimeout(() => {
+      this.nextStory();
+    }, 1000);
+  }
+  
+  /**
+   * Прерывание текущей игры пользователем
+   */
+  abandonGame() {
+    // Создаем транзакцию Sentry для отслеживания прерывания игры
+    const transaction = errorService.startTransaction({
+      name: 'abandonGame',
+      op: 'game.abandon',
+      data: {
+        currentStoryIndex: this.currentStoryIndex,
+        totalStories: this.gameSession?.stories.length
+      }
+    });
+    
+    try {
+      if (this.gameSession && this.gameSession.gameId) {
+        // Отправляем запрос на прерывание игры
+        this.apiService.post('/api/game/abandon', {
+          gameId: this.gameSession.gameId
+        }).catch(error => {
+          errorService.captureException(error, {
+            tags: {
+              gameAction: 'abandonGame'
+            },
+            level: 'warning'
+          });
+        });
+        
+        // Сбрасываем данные игры
+        this.gameSession = null;
+        this.currentStoryIndex = 0;
+        
+        // Устанавливаем статус транзакции как успешную
+        transaction.setStatus('ok');
+      }
+    } catch (error) {
+      // Устанавливаем статус транзакции как ошибку и отправляем её в Sentry
+      transaction.setStatus('internal_error');
+      errorService.captureException(error, {
+        tags: {
+          gameAction: 'abandonGame'
+        },
+        level: 'warning'
+      });
+    } finally {
+      transaction.finish();
+    }
   }
 } 

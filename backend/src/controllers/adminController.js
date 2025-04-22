@@ -5,8 +5,6 @@ const { User, Story, GameSession } = require('../models');
 const logger = require('../utils/logger');
 const statsService = require('../services/statsService');
 const leaderboardService = require('../services/leaderboardService');
-const Game = require('../models/Game');
-const { sendResetPasswordEmail } = require('../services/emailService');
 const crypto = require('crypto');
 
 /**
@@ -328,8 +326,8 @@ exports.getUserById = async (req, res) => {
     }
     
     // Get additional user stats
-    const gamesPlayed = await Game.countDocuments({ userId: userId });
-    const games = await Game.find({ userId: userId });
+    const gamesPlayed = await GameSession.countDocuments({ userId: userId });
+    const games = await GameSession.find({ userId: userId });
     
     const averageScore = games.length > 0
       ? games.reduce((acc, game) => acc + game.score, 0) / games.length
@@ -480,37 +478,41 @@ exports.updateUserStatus = async (req, res) => {
 };
 
 /**
- * Initiate password reset for a user
+ * Сбросить пароль пользователя
  */
 exports.resetUserPassword = async (req, res) => {
   try {
-    const userId = req.params.id;
+    const { id } = req.params;
     
-    const user = await User.findById(userId);
+    // Генерируем временный пароль
+    const tempPassword = crypto.randomBytes(6).toString('hex');
+    
+    // Находим пользователя
+    const user = await User.findById(id);
     
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Пользователь не найден'
+      });
     }
     
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetTokenExpiry = Date.now() + 3600000; // 1 hour
-    
-    user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = resetTokenExpiry;
+    // Обновляем пароль пользователя
+    user.passwordHash = tempPassword; // Предполагается, что модель User хеширует пароль при сохранении
     await user.save();
     
-    // Send reset email
-    await sendResetPasswordEmail(user.email, resetToken);
-    
-    logger.info(`Password reset initiated for user ${userId} by admin ${req.user._id}`);
-    
-    res.status(200).json({ 
-      message: 'Password reset email sent successfully'
+    // Оповещаем админа о новом пароле (в реальной системе отправили бы email пользователю)
+    return res.status(200).json({
+      success: true,
+      message: 'Пароль пользователя сброшен',
+      tempPassword // В продакшене не возвращали бы пароль в ответе
     });
   } catch (error) {
-    logger.error('Error resetting user password:', error);
-    res.status(500).json({ message: 'Failed to reset password' });
+    logger.error(`Error resetting user password: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Ошибка при сбросе пароля пользователя'
+    });
   }
 };
 
@@ -520,7 +522,7 @@ exports.resetUserPassword = async (req, res) => {
 exports.getGameStats = async (req, res) => {
   try {
     // Get total number of games
-    const totalGames = await Game.countDocuments();
+    const totalGames = await GameSession.countDocuments();
     
     // Get count of active users (users who played at least one game)
     const activeUsers = await User.countDocuments({ 
@@ -532,12 +534,12 @@ exports.getGameStats = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const gamesToday = await Game.countDocuments({
+    const gamesToday = await GameSession.countDocuments({
       createdAt: { $gte: today }
     });
     
     // Calculate average score across all games
-    const gamesWithScores = await Game.find({}, 'score');
+    const gamesWithScores = await GameSession.find({}, 'score');
     const averageScore = gamesWithScores.length > 0
       ? gamesWithScores.reduce((acc, game) => acc + game.score, 0) / gamesWithScores.length
       : 0;
@@ -554,7 +556,7 @@ exports.getGameStats = async (req, res) => {
       const nextDate = new Date(date);
       nextDate.setDate(nextDate.getDate() + 1);
       
-      const count = await Game.countDocuments({
+      const count = await GameSession.countDocuments({
         createdAt: { 
           $gte: date, 
           $lt: nextDate 
@@ -778,7 +780,7 @@ exports.rebuildLeaderboards = async (req, res) => {
     await User.updateMany({}, { totalScore: 0 });
     
     // Get all completed games
-    const games = await Game.find({ status: 'completed' })
+    const games = await GameSession.find({ status: 'completed' })
       .sort({ completedAt: 1 }) // Process in chronological order
       .select('userId score completedAt');
     

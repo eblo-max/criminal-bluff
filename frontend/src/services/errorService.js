@@ -1,8 +1,8 @@
 /**
  * ErrorService - Сервис для обработки и мониторинга ошибок
  */
-import * as Sentry from '@sentry/browser';
-import { Integrations } from '@sentry/tracing';
+import * as Sentry from '@sentry/react';
+import { BrowserTracing } from '@sentry/browser';
 
 class ErrorService {
   /**
@@ -10,37 +10,70 @@ class ErrorService {
    */
   constructor() {
     this.isInitialized = false;
-    this.sentryDsn = process.env.SENTRY_DSN || '';
-    this.environment = process.env.NODE_ENV || 'development';
-    this.version = process.env.APP_VERSION || '1.0.0';
   }
 
   /**
-   * Инициализация сервиса
-   * @param {Object} telegramUser - Информация о пользователе Telegram (опционально)
+   * Инициализация сервиса ошибок и Sentry
+   * @param {Object} telegramUser - Информация о пользователе Telegram
+   * @returns {Boolean} - Успешность инициализации
    */
   init(telegramUser = null) {
-    // Если DSN не указан или сервис уже инициализирован, выходим
-    if (!this.sentryDsn || this.isInitialized) {
+    // Если Sentry уже инициализирован, не инициализируем повторно
+    if (this.isInitialized) {
+      return true;
+    }
+    
+    // Если DSN не указан, не инициализируем Sentry
+    const dsn = import.meta.env.VITE_SENTRY_DSN;
+    if (!dsn) {
+      console.warn('Sentry DSN не указан. Мониторинг ошибок отключен.');
       return false;
     }
-
+    
     try {
-      // Инициализация Sentry
+      // Инициализируем Sentry
       Sentry.init({
-        dsn: this.sentryDsn,
-        integrations: [new Integrations.BrowserTracing()],
-        tracesSampleRate: this.environment === 'production' ? 0.1 : 1.0,
-        environment: this.environment,
-        release: this.version,
-        
-        // Фильтрация неважных ошибок
-        beforeSend(event) {
-          // Игнорируем ошибки CORS и ошибки от расширений браузера
-          if (event.message && (
-            event.message.includes('Cross-Origin Request Blocked') ||
-            event.message.includes('Extension') ||
-            event.message.includes('ResizeObserver loop')
+        dsn: dsn,
+        environment: import.meta.env.VITE_NODE_ENV || 'development',
+        release: import.meta.env.VITE_APP_VERSION || '1.0.0',
+        integrations: [
+          // Добавляем интеграции для браузера
+          new BrowserTracing({
+            tracingOrigins: [
+              window.location.origin, 
+              /^https:\/\/api\./, 
+              /^https:\/\/[\w-]+\.railway\.app/
+            ]
+          })
+        ],
+        tracesSampleRate: import.meta.env.VITE_NODE_ENV === 'production' ? 0.2 : 1.0,
+        beforeSend(event, hint) {
+          const error = hint && hint.originalException;
+          
+          // Добавляем информацию о типе ошибки
+          if (error && error.name) {
+            event.tags = event.tags || {};
+            event.tags.error_type = error.name;
+          }
+          
+          // Редактируем или удаляем чувствительную информацию
+          if (event.request && event.request.url) {
+            // Проверяем URL на содержание токенов
+            if (event.request.url.includes('token=') || 
+                event.request.url.includes('auth=') || 
+                event.request.url.includes('initData=')) {
+              // Редактируем URL, удаляя чувствительные параметры
+              event.request.url = event.request.url.replace(
+                /([?&])(token|auth|initData)=([^&]+)/g, 
+                '$1$2=[REDACTED]'
+              );
+            }
+          }
+          
+          // Исключаем ошибки веб-расширений
+          if (hint && hint.originalException && 
+              (String(hint.originalException).includes('extension') || 
+               String(hint.originalException).includes('adblock')
           )) {
             return null;
           }
@@ -62,6 +95,20 @@ class ErrorService {
       if (telegramUser) {
         this.setUser(telegramUser);
       }
+      
+      // Добавляем глобальный обработчик необработанных ошибок
+      window.addEventListener('error', (event) => {
+        this.captureException(event.error || new Error(event.message), {
+          tags: { mechanism: 'onerror' }
+        });
+      });
+      
+      // Добавляем глобальный обработчик необработанных промисов
+      window.addEventListener('unhandledrejection', (event) => {
+        this.captureException(event.reason || new Error('Unhandled Promise rejection'), {
+          tags: { mechanism: 'onunhandledrejection' }
+        });
+      });
       
       this.isInitialized = true;
       console.log('Sentry initialized successfully');
@@ -85,7 +132,8 @@ class ErrorService {
       Sentry.setUser({
         id: user.telegramId || user.id,
         username: user.username,
-        name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        ip_address: '{{auto}}'
       });
     } catch (error) {
       console.error('Error setting user context:', error);
@@ -137,6 +185,18 @@ class ErrorService {
           scope.setLevel(additionalData.level);
         }
         
+        // Добавляем данные о Telegram WebApp, если доступны
+        if (window.Telegram?.WebApp) {
+          scope.setTag('telegram_platform', window.Telegram.WebApp.platform || 'unknown');
+          scope.setTag('telegram_version', window.Telegram.WebApp.version || 'unknown');
+          scope.setContext('Telegram WebApp', {
+            colorScheme: window.Telegram.WebApp.colorScheme,
+            viewportHeight: window.Telegram.WebApp.viewportHeight,
+            viewportStableHeight: window.Telegram.WebApp.viewportStableHeight,
+            initDataUnsafe: !!window.Telegram.WebApp.initDataUnsafe
+          });
+        }
+        
         // Отправляем ошибку
         Sentry.captureException(error);
       });
@@ -161,36 +221,6 @@ class ErrorService {
       Sentry.captureMessage(message, level);
     } catch (error) {
       console.error('Error sending message to Sentry:', error);
-    }
-  }
-  
-  /**
-   * Создание и возврат транзакции
-   * @param {Object} options - Параметры транзакции
-   * @param {String} options.name - Имя транзакции
-   * @param {String} options.op - Тип операции
-   * @param {Object} [options.data={}] - Дополнительные данные
-   * @returns {Object|null} - Объект транзакции или null
-   */
-  startTransaction(options) {
-    if (!this.isInitialized) {
-      // Возвращаем объект-заглушку, чтобы не вызывать ошибки при использовании
-      return {
-        finish: () => {},
-        setStatus: () => {}
-      };
-    }
-    
-    try {
-      const transaction = Sentry.startTransaction(options);
-      return transaction;
-    } catch (error) {
-      console.error('Error starting transaction:', error);
-      // Возвращаем объект-заглушку, чтобы не вызывать ошибки при использовании
-      return {
-        finish: () => {},
-        setStatus: () => {}
-      };
     }
   }
 }
