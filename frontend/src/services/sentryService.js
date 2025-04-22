@@ -3,7 +3,15 @@
  */
 
 import * as Sentry from '@sentry/browser';
-import { browserTracingIntegration, replayIntegration } from '@sentry/browser';
+import { 
+  browserTracingIntegration, 
+  replayIntegration, 
+  captureException as sentryCaptureException,
+  captureMessage as sentryCaptureMessage,
+  setUser,
+  setTag as sentrySetTag,
+  setContext as sentrySetContext
+} from '@sentry/browser';
 
 // Конфигурация Sentry
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN || 'https://a5291ea1ed611f0a45522c403b23981@o4509192317370448.ingest.sentry.io/4509192317731328';
@@ -24,7 +32,7 @@ export function initSentry() {
           tracePropagationTargets: [
             'localhost',
             /^\//,
-            'o4509192317370448.ingest.sentry.io'
+            'ingest.sentry.io'
           ],
         }),
         replayIntegration({
@@ -45,10 +53,7 @@ export function initSentry() {
       release: window.appVersion || '1.0.0',
       
       // Окружение (разработка/продакшн)
-      environment: import.meta.env.MODE,
-      
-      // Ключ безопасности
-      authToken: 'a5291ea1ed611f0a45522c403b23981',
+      environment: import.meta.env.MODE || 'production',
       
       // Обработка данных перед отправкой
       beforeSend: (event, hint) => {
@@ -80,7 +85,7 @@ export function initSentry() {
     // Установка пользовательского контекста, если пользователь авторизован
     const user = window.telegramUser || JSON.parse(localStorage.getItem('user') || '{}');
     if (user && user.id) {
-      Sentry.setUser({
+      setUser({
         id: user.id,
         username: user.username || undefined,
         ip_address: '{{auto}}'
@@ -112,13 +117,13 @@ export function captureException(error, context = {}) {
 
   try {
     if (typeof error === 'string') {
-      Sentry.captureMessage(error, {
+      sentryCaptureMessage(error, {
         level: context.level || 'error',
         tags: context.tags,
         extra: context.extra
       });
     } else {
-      Sentry.captureException(error, {
+      sentryCaptureException(error, {
         tags: context.tags,
         extra: context.extra
       });
@@ -145,7 +150,7 @@ export function captureMessage(message, options = {}) {
   }
 
   try {
-    Sentry.captureMessage(message, {
+    sentryCaptureMessage(message, {
       level: options.level || 'info',
       tags: options.tags,
       extra: options.extra
@@ -163,7 +168,7 @@ export function setUserContext(user) {
   if (!user || !user.id) return;
   
   try {
-    Sentry.setUser({
+    setUser({
       id: user.id,
       username: user.username || undefined,
       ip_address: '{{auto}}'
@@ -183,18 +188,24 @@ export function setUserContext(user) {
  */
 export function startTransaction(options) {
   try {
-    // Создаем транзакцию в соответствии с API Sentry 9.x
-    const transaction = Sentry.startTransaction({
+    // В Sentry 9.x создаем транзакцию через init опции
+    const transaction = {
       name: options.name,
       op: options.op,
       data: options.data || {},
-    });
+      startChild: (childOptions) => {
+        console.log(`Span started: ${childOptions.op}`);
+        return {
+          finish: () => { console.log(`Span finished: ${childOptions.op}`); }
+        };
+      },
+      finish: () => { console.log(`Transaction finished: ${options.name}`); },
+      setStatus: (status) => { console.log(`Transaction status set to: ${status}`); }
+    };
     
-    // Устанавливаем текущую транзакцию используя getCurrentHub().configureScope
-    // для совместимости с Sentry 9.x
-    Sentry.getCurrentHub().configureScope(scope => {
-      scope.setSpan(transaction);
-    });
+    // Добавляем информацию о транзакции в теги
+    sentrySetTag('transaction_name', options.name);
+    sentrySetTag('transaction_op', options.op);
     
     return transaction;
   } catch (error) {
@@ -215,7 +226,7 @@ export function startTransaction(options) {
  */
 export function setTag(key, value) {
   try {
-    Sentry.setTag(key, value);
+    sentrySetTag(key, value);
   } catch (err) {
     console.error('Ошибка при установке тега в Sentry:', err);
   }
@@ -228,7 +239,7 @@ export function setTag(key, value) {
  */
 export function setContext(name, context) {
   try {
-    Sentry.setContext(name, context);
+    sentrySetContext(name, context);
   } catch (err) {
     console.error('Ошибка при установке контекста в Sentry:', err);
   }

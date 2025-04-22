@@ -548,5 +548,5 @@ class GameService {
   }
 }
 
-// Export as default instead of named export
-export default GameService; 
+// Export as a named export instead of default export
+export { GameService }; 
