@@ -1,271 +1,184 @@
 /**
  * Общее состояние приложения
- * Используется для предотвращения циклических зависимостей между сервисами
+ * Предотвращает циклические зависимости между сервисами
  */
 export const sharedState = {
   // Флаги состояния приложения
   isAppInitialized: false,
   isTelegramReady: false,
-  isUserDataLoaded: false,
-  isInitialized: false,
+  isDebugMode: false,
   
   // Данные пользователя
-  userData: null,
+  user: null,
   
   // Параметры темы Telegram
-  themeParams: null,
+  theme: {
+    bgColor: '#ffffff',
+    textColor: '#000000',
+    buttonColor: '#3a6ec1',
+    buttonTextColor: '#ffffff'
+  },
   
   // Текущий экран
   currentScreen: null,
   
+  // Логи
+  logs: [],
+  
   /**
-   * Логирование сообщений приложения
-   * @param {string} message - сообщение для логирования
-   * @param {string} level - уровень сообщения (log, info, warn, error)
-   * @param {Object} data - дополнительные данные для логирования
+   * Обновляет параметры темы
+   * @param {Object} themeParams 
    */
-  log(message, level = 'log', data = null) {
-    const prefix = '[Criminal Bluff] ';
+  updateTheme(themeParams) {
+    if (!themeParams) return;
     
-    try {
-      const formattedMessage = data 
-        ? `${prefix}${message} ${JSON.stringify(data)}`
-        : `${prefix}${message}`;
-        
-      switch (level) {
-        case 'info':
-          console.info(formattedMessage);
-          break;
-        case 'warn':
-          console.warn(formattedMessage);
-          break;
-        case 'error':
-          console.error(formattedMessage);
-          break;
-        default:
-          console.log(formattedMessage);
-      }
-      
-      // Добавляем сообщение в отладочный лог, если он есть
-      this.addToDebugLog(message, level);
-    } catch (error) {
-      console.error(`[Criminal Bluff] Ошибка логирования: ${error.message}`);
-    }
-  },
-  
-  /**
-   * Добавляет сообщение в визуальный отладочный лог
-   * @param {string} message - сообщение для логирования
-   * @param {string} level - уровень сообщения (log, info, warn, error)
-   */
-  addToDebugLog(message, level = 'log') {
-    if (!window.debugMode) return;
+    // Обновляем параметры темы
+    this.theme = {
+      bgColor: themeParams.bg_color || this.theme.bgColor,
+      textColor: themeParams.text_color || this.theme.textColor,
+      buttonColor: themeParams.button_color || this.theme.buttonColor,
+      buttonTextColor: themeParams.button_text_color || this.theme.buttonTextColor
+    };
     
-    try {
-      const debugLog = document.getElementById('debug-log');
-      if (!debugLog) return;
-      
-      const logItem = document.createElement('div');
-      logItem.style.marginBottom = '3px';
-      logItem.style.borderLeft = '3px solid';
-      logItem.style.paddingLeft = '5px';
-      
-      // Устанавливаем цвет в зависимости от уровня
-      switch (level) {
-        case 'info':
-          logItem.style.borderColor = '#2196f3';
-          break;
-        case 'warn':
-          logItem.style.borderColor = '#ff9800';
-          break;
-        case 'error':
-          logItem.style.borderColor = '#f44336';
-          break;
-        default:
-          logItem.style.borderColor = '#4caf50';
-      }
-      
-      // Добавляем временную метку
-      const timestamp = new Date().toLocaleTimeString();
-      logItem.textContent = `${timestamp}: ${message}`;
-      
-      // Добавляем в начало, чтобы новые сообщения были сверху
-      debugLog.insertBefore(logItem, debugLog.firstChild);
-      
-      // Ограничиваем количество сообщений
-      if (debugLog.children.length > 30) {
-        debugLog.removeChild(debugLog.lastChild);
-      }
-    } catch (e) {
-      // Молча игнорируем ошибки в отладочном логе
-    }
+    // Применяем тему к документу
+    document.documentElement.style.setProperty('--bg-color', this.theme.bgColor);
+    document.documentElement.style.setProperty('--text-color', this.theme.textColor);
+    document.documentElement.style.setProperty('--button-color', this.theme.buttonColor);
+    document.documentElement.style.setProperty('--button-text-color', this.theme.buttonTextColor);
+    
+    this.log('Тема Telegram обновлена');
   },
   
   /**
-   * Проверяет, загружен ли DOM
-   * @returns {boolean} - готов ли DOM
+   * Безопасно получает элемент DOM
+   * @param {string} id ID элемента
+   * @returns {HTMLElement|null}
    */
-  isDOMReady() {
-    return document.readyState === 'complete' || document.readyState === 'interactive';
+  getElementById(id) {
+    return document.getElementById(id);
   },
   
   /**
-   * Безопасная манипуляция DOM-элементами
-   * @param {string} selector - CSS-селектор для элемента
-   * @param {Function} callback - функция, выполняемая с элементом
-   * @param {boolean} waitForElement - ждать ли появления элемента
-   * @param {number} timeout - таймаут ожидания элемента в мс
-   * @returns {boolean} - успешность операции
+   * Безопасно создает элемент DOM
+   * @param {string} tagName Имя тега
+   * @returns {HTMLElement}
    */
-  safelyManipulateDOM(selector, callback, waitForElement = false, timeout = 1000) {
-    try {
-      // Если DOM не готов и нам нужно дождаться элемента, откладываем выполнение
-      if (!this.isDOMReady() && waitForElement) {
-        this.log(`DOM не готов для ${selector}, откладываем манипуляцию`, 'info');
-        setTimeout(() => {
-          this.safelyManipulateDOM(selector, callback, waitForElement, timeout);
-        }, 50);
-        return false;
-      }
-      
-      const element = document.querySelector(selector);
-      
-      if (element) {
-        // Элемент найден, безопасно выполняем функцию
-        try {
-          callback(element);
-          return true;
-        } catch (callbackError) {
-          this.log(`Ошибка в функции обратного вызова для ${selector}: ${callbackError.message}`, 'error');
-          return false;
-        }
-      } else if (waitForElement && timeout > 0) {
-        // Если элемент не найден, но мы хотим подождать его появления
-        this.log(`Элемент ${selector} не найден, ожидаем...`, 'info');
-        setTimeout(() => {
-          this.safelyManipulateDOM(selector, callback, waitForElement, timeout - 100);
-        }, 100);
-        return false;
-      } else {
-        // Элемент не найден и мы не ждем
-        this.log(`Элемент не найден: ${selector}`, 'warn');
-        return false;
-      }
-    } catch (error) {
-      this.log(`Ошибка при работе с DOM (${selector}): ${error.message}`, 'error');
-      return false;
-    }
+  createElement(tagName) {
+    return document.createElement(tagName);
   },
   
   /**
-   * Безопасное создание или обновление HTML-элемента
-   * @param {string} id - ID элемента
-   * @param {string} tag - HTML-тег для создания элемента
-   * @param {Object} styles - CSS-стили для элемента
-   * @param {string} content - HTML-содержимое элемента
-   * @param {string} parent - ID родительского элемента (опционально)
-   * @returns {HTMLElement|null} - созданный или обновленный элемент
+   * Показывает сообщение об ошибке
+   * @param {string} message Сообщение
    */
-  createOrUpdateElement(id, tag, styles = {}, content = '', parent = null) {
-    try {
-      if (!id || !tag) {
-        this.log('Не указан ID или тег элемента', 'error');
-        return null;
-      }
-      
-      // Ищем существующий элемент
-      let element = document.getElementById(id);
-      
-      // Если элемента нет, создаем его
-      if (!element) {
-        element = document.createElement(tag);
-        element.id = id;
-        
-        // Если указан родитель, добавляем элемент к нему
-        if (parent) {
-          const parentElement = typeof parent === 'string' 
-            ? document.getElementById(parent) 
-            : parent;
-            
-          if (parentElement) {
-            parentElement.appendChild(element);
-          } else {
-            document.body.appendChild(element);
-          }
-        } else {
-          document.body.appendChild(element);
-        }
-      }
-      
-      // Применяем стили
-      if (styles && typeof styles === 'object') {
-        Object.keys(styles).forEach(key => {
-          element.style[key] = styles[key];
-        });
-      }
-      
-      // Устанавливаем содержимое, если оно указано
-      if (content !== undefined && content !== null) {
-        element.innerHTML = content;
-      }
-      
-      return element;
-    } catch (error) {
-      this.log(`Ошибка при создании/обновлении элемента ${id}: ${error.message}`, 'error');
-      return null;
+  showErrorMessage(message) {
+    this.log(`Отображение сообщения об ошибке: ${message}`, 'error');
+    
+    // Получаем или создаем контейнер для ошибок
+    let errorContainer = this.getElementById('error-container');
+    
+    if (!errorContainer) {
+      errorContainer = this.createElement('div');
+      errorContainer.id = 'error-container';
+      errorContainer.style.position = 'fixed';
+      errorContainer.style.top = '10px';
+      errorContainer.style.left = '50%';
+      errorContainer.style.transform = 'translateX(-50%)';
+      errorContainer.style.zIndex = '2000';
+      document.body.appendChild(errorContainer);
     }
+    
+    // Создаем элемент сообщения
+    const errorMessage = this.createElement('div');
+    errorMessage.className = 'error-message';
+    errorMessage.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+    errorMessage.style.color = 'white';
+    errorMessage.style.padding = '10px 15px';
+    errorMessage.style.borderRadius = '5px';
+    errorMessage.style.marginBottom = '5px';
+    errorMessage.style.boxShadow = '0 2px 5px rgba(0, 0, 0, 0.3)';
+    errorMessage.style.maxWidth = '80vw';
+    errorMessage.style.wordBreak = 'break-word';
+    errorMessage.textContent = message;
+    
+    // Добавляем сообщение в контейнер
+    errorContainer.appendChild(errorMessage);
+    
+    // Устанавливаем таймер для удаления сообщения
+    setTimeout(() => {
+      if (errorContainer.contains(errorMessage)) {
+        errorContainer.removeChild(errorMessage);
+      }
+    }, 5000);
   },
   
   /**
-   * Показать сообщение об ошибке
-   * @param {string} message - текст сообщения
-   * @param {number} duration - длительность отображения в мс (по умолчанию 3000)
+   * Логирует сообщение
+   * @param {string} message Сообщение
+   * @param {string} level Уровень логирования (info, warn, error)
    */
-  showErrorMessage(message, duration = 3000) {
-    try {
-      // Создаем или обновляем элемент ошибки
-      const errorElement = this.createOrUpdateElement('error-message', 'div', {
-        position: 'fixed',
-        bottom: '20px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        backgroundColor: 'var(--error-color, #f44336)',
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '8px',
-        fontSize: '16px',
-        zIndex: '9999',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-        maxWidth: '80%',
-        textAlign: 'center',
-        opacity: '0',
-        transition: 'opacity 0.3s ease'
-      }, message);
-      
-      if (!errorElement) return;
-      
-      // Показываем сообщение
-      setTimeout(() => {
-        errorElement.style.opacity = '1';
-      }, 10);
-      
-      // Скрываем сообщение через указанное время
-      setTimeout(() => {
-        if (errorElement) {
-          errorElement.style.opacity = '0';
-          
-          // Удаляем элемент после анимации скрытия
-          setTimeout(() => {
-            if (errorElement && errorElement.parentNode) {
-              errorElement.parentNode.removeChild(errorElement);
-            }
-          }, 300);
-        }
-      }, duration);
-    } catch (error) {
-      // В случае ошибки при показе сообщения, выводим в консоль
-      this.log(`Не удалось показать сообщение об ошибке: ${message}`, 'error');
-      this.log(error.message, 'error');
+  log(message, level = 'info') {
+    const timestamp = new Date().toISOString();
+    const logEntry = { timestamp, message, level };
+    
+    // Добавляем лог в массив
+    this.logs.push(logEntry);
+    
+    // Ограничиваем количество логов
+    if (this.logs.length > 100) {
+      this.logs.shift();
     }
+    
+    // Выводим в консоль
+    switch (level) {
+      case 'warn':
+        console.warn(`[${timestamp}] ${message}`);
+        break;
+      case 'error':
+        console.error(`[${timestamp}] ${message}`);
+        break;
+      default:
+        console.log(`[${timestamp}] ${message}`);
+    }
+    
+    // Обновляем отображение логов, если оно активно
+    this.updateLogDisplay();
+  },
+  
+  /**
+   * Обновляет отображение логов в UI
+   */
+  updateLogDisplay() {
+    const logsContainer = this.getElementById('logs-container');
+    if (!logsContainer || logsContainer.style.display === 'none') return;
+    
+    // Очищаем контейнер
+    logsContainer.innerHTML = '';
+    
+    // Добавляем заголовок
+    const header = this.createElement('div');
+    header.style.fontWeight = 'bold';
+    header.style.marginBottom = '5px';
+    header.style.borderBottom = '1px solid #444';
+    header.textContent = 'Логи приложения:';
+    logsContainer.appendChild(header);
+    
+    // Добавляем логи
+    this.logs.forEach(log => {
+      const logElement = this.createElement('div');
+      logElement.className = `log-entry log-${log.level}`;
+      logElement.style.fontSize = '10px';
+      logElement.style.marginBottom = '2px';
+      logElement.style.borderLeft = `3px solid ${log.level === 'error' ? 'red' : log.level === 'warn' ? 'orange' : 'green'}`;
+      logElement.style.paddingLeft = '5px';
+      
+      const time = log.timestamp.split('T')[1].split('.')[0];
+      logElement.textContent = `[${time}] ${log.message}`;
+      
+      logsContainer.appendChild(logElement);
+    });
+    
+    // Прокручиваем контейнер вниз
+    logsContainer.scrollTop = logsContainer.scrollHeight;
   }
 }; 

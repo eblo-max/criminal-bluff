@@ -1,5 +1,5 @@
-import { sharedState } from './common';
-import { apiService } from './apiService';
+import { sharedState } from './common.js';
+import { apiService } from './apiService.js';
 import { uiService } from './uiService';
 
 /**
