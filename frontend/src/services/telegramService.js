@@ -18,102 +18,237 @@ export class TelegramService {
     
     // JWT токен после аутентификации
     this.authToken = localStorage.getItem('auth_token') || null;
+    
+    // Состояние инициализации
+    this.initialized = false;
+    
+    // Обработчик для завершения инициализации
+    this.onInitComplete = null;
   }
   
   /**
    * Инициализация сервиса
    */
   async init() {
-    console.log('Starting Telegram WebApp initialization...');
-    
-    // Проверяем наличие объекта Telegram.WebApp
-    if (!this.tg) {
-      console.error('ОШИБКА: Telegram WebApp объект недоступен');
-      console.log('window.Telegram:', window.Telegram ? 'доступен' : 'недоступен');
+    try {
+      console.log('Starting Telegram WebApp initialization...');
       
-      // Специальный режим для отладки
-      if (localStorage.getItem('debug_mode') || process.env.NODE_ENV === 'development') {
-        console.warn('Включен режим отладки. Пробуем запуститься без WebApp');
-        return this.fallbackInitialization();
-      }
-      return false;
-    }
-    
-    console.log('Telegram WebApp объект найден, версия:', this.tg.version);
-    
-    // Расширяем окно приложения на всю высоту
-    this.tg.expand();
-    
-    // Сохраняем initData для потенциального использования в других местах
-    this.initData = this.tg.initData || '';
-    if (!this.initData) {
-      console.error('ОШИБКА: initData не доступны в WebApp объекте');
-      console.log('initDataUnsafe:', this.tg.initDataUnsafe ? 'доступны' : 'недоступны');
+      // Запись отладочной информации
+      this._logDebugInfo('Начало инициализации');
       
-      // Пробуем получить из localStorage (если был сохранен ранее)
-      const savedInitData = localStorage.getItem('tg_init_data');
-      if (savedInitData) {
-        console.log('Используем сохраненные initData из localStorage');
-        this.initData = savedInitData;
-      } else if (localStorage.getItem('debug_mode') || process.env.NODE_ENV === 'development') {
-        console.warn('Включен режим отладки. Пробуем запуститься без initData');
-        return this.fallbackInitialization();
-      } else {
+      // Проверяем наличие объекта Telegram.WebApp
+      if (!this.tg) {
+        console.error('ОШИБКА: Telegram WebApp объект недоступен');
+        this._logDebugInfo('Telegram WebApp объект недоступен');
+        
+        // Проверяем наличие window.Telegram
+        if (window.Telegram) {
+          console.log('window.Telegram есть, но WebApp отсутствует');
+          this._logDebugInfo('window.Telegram есть, но WebApp отсутствует');
+        }
+        
+        // Специальный режим для отладки
+        if (this._isDebugMode()) {
+          console.warn('Включен режим отладки. Пробуем запуститься без WebApp');
+          this._logDebugInfo('Пробуем запуститься в режиме отладки');
+          return await this.fallbackInitialization();
+        }
+        
+        this._logDebugInfo('Инициализация не удалась: WebApp недоступен');
         return false;
       }
-    } else {
-      console.log('initData получены из WebApp объекта');
-      localStorage.setItem('tg_init_data', this.initData);
-    }
-    
-    // Получаем данные пользователя
-    if (this.tg.initDataUnsafe && this.tg.initDataUnsafe.user) {
-      this.user = this.tg.initDataUnsafe.user;
-      console.log('Данные пользователя получены:', this.user.username || this.user.id);
-    } else {
-      console.warn('Данные пользователя недоступны в initDataUnsafe');
-    }
-    
-    // Включаем кнопку назад в хедере Telegram
-    this.setupBackButton();
-    
-    // Добавляем обработчик темы
-    this.setupTheme();
-    
-    // Выводим информацию в консоль для отладки
-    console.log('Telegram WebApp детальная информация:', {
-      version: this.tg.version,
-      platform: this.tg.platform,
-      themeParams: this.tg.themeParams ? 'доступны' : 'недоступны',
-      initData: this.initData ? `доступны (${this.initData.substr(0, 30)}...)` : 'недоступны',
-      viewportHeight: this.tg.viewportHeight,
-      viewportStableHeight: this.tg.viewportStableHeight,
-      colorScheme: this.tg.colorScheme
-    });
-    
-    // Проверяем возможность аутентификации
-    try {
-      // Проверяем токен в localStorage
-      const savedToken = localStorage.getItem('auth_token');
-      if (savedToken) {
-        console.log('Найден сохраненный токен, проверяем валидность');
-        this.authToken = savedToken;
-        const isValid = await this.validateToken(this.authToken);
-        if (isValid) {
-          console.log('Токен валиден, аутентификация успешна');
-          return true;
-        }
-        console.log('Токен невалиден, требуется повторная аутентификация');
+      
+      console.log('Telegram WebApp объект найден, версия:', this.tg.version);
+      this._logDebugInfo(`WebApp версия: ${this.tg.version}, платформа: ${this.tg.platform}`);
+      
+      // Расширяем окно приложения на всю высоту
+      try {
+        this.tg.expand();
+      } catch (expandError) {
+        console.warn('Не удалось расширить окно WebApp:', expandError);
+        this._logDebugInfo(`Ошибка при расширении окна: ${expandError.message}`);
       }
       
-      // Если нет токена или он невалиден, аутентифицируемся заново
-      console.log('Выполняем аутентификацию с сервером...');
-      const authResult = await this.authenticate();
-      console.log('Результат аутентификации:', authResult ? 'успешно' : 'неудача');
-      return authResult;
-    } catch (error) {
-      console.error('Ошибка при аутентификации:', error.message);
+      // Сохраняем initData для потенциального использования в других местах
+      this.initData = this.tg.initData || '';
+      
+      if (!this.initData && this.tg.initDataUnsafe) {
+        // Если initData пусты, но есть initDataUnsafe, попробуем использовать его
+        try {
+          const rawInitData = new URLSearchParams();
+          const unsafeData = this.tg.initDataUnsafe;
+          
+          // Преобразуем объект в строку initData
+          if (unsafeData.query_id) rawInitData.append('query_id', unsafeData.query_id);
+          if (unsafeData.user) rawInitData.append('user', JSON.stringify(unsafeData.user));
+          if (unsafeData.auth_date) rawInitData.append('auth_date', unsafeData.auth_date);
+          if (unsafeData.hash) rawInitData.append('hash', unsafeData.hash);
+          
+          this.initData = rawInitData.toString();
+          console.log('Создан initData из initDataUnsafe');
+          this._logDebugInfo('Создан initData из initDataUnsafe');
+        } catch (dataError) {
+          console.error('Ошибка при создании initData из initDataUnsafe:', dataError);
+          this._logDebugInfo(`Ошибка при создании initData: ${dataError.message}`);
+        }
+      }
+      
+      if (!this.initData) {
+        console.error('ОШИБКА: initData не доступны в WebApp объекте');
+        this._logDebugInfo('initData не доступны в WebApp объекте');
+        
+        // Пробуем получить из localStorage (если был сохранен ранее)
+        const savedInitData = localStorage.getItem('tg_init_data');
+        if (savedInitData) {
+          console.log('Используем сохраненные initData из localStorage');
+          this._logDebugInfo('Используем сохраненные initData из localStorage');
+          this.initData = savedInitData;
+        } else if (this._isDebugMode()) {
+          console.warn('Включен режим отладки. Пробуем запуститься без initData');
+          this._logDebugInfo('Запуск в режиме отладки без initData');
+          return await this.fallbackInitialization();
+        } else {
+          this._logDebugInfo('Ошибка: нет initData и нет режима отладки');
+          return false;
+        }
+      } else {
+        console.log('initData получены из WebApp объекта');
+        this._logDebugInfo('initData получены успешно');
+        localStorage.setItem('tg_init_data', this.initData);
+      }
+      
+      // Получаем данные пользователя
+      if (this.tg.initDataUnsafe && this.tg.initDataUnsafe.user) {
+        this.user = this.tg.initDataUnsafe.user;
+        console.log('Данные пользователя получены:', this.user.username || this.user.id);
+        this._logDebugInfo(`Пользователь: ${this.user.username || this.user.id}`);
+      } else {
+        console.warn('Данные пользователя недоступны в initDataUnsafe');
+        this._logDebugInfo('Данные пользователя недоступны');
+      }
+      
+      // Включаем кнопку назад в хедере Telegram
+      this.setupBackButton();
+      
+      // Добавляем обработчик темы
+      this.setupTheme();
+      
+      // Выводим информацию в консоль для отладки
+      const debugInfo = {
+        version: this.tg.version,
+        platform: this.tg.platform,
+        themeParams: this.tg.themeParams ? 'доступны' : 'недоступны',
+        initData: this.initData ? `доступны (${this.initData.substr(0, 15)}...)` : 'недоступны',
+        viewportHeight: this.tg.viewportHeight,
+        viewportStableHeight: this.tg.viewportStableHeight,
+        colorScheme: this.tg.colorScheme
+      };
+      
+      console.log('Telegram WebApp детальная информация:', debugInfo);
+      this._logDebugInfo(`Детальная информация: ${JSON.stringify(debugInfo)}`);
+      
+      // Проверяем возможность аутентификации
+      try {
+        // Проверяем токен в localStorage
+        const savedToken = localStorage.getItem('auth_token');
+        if (savedToken) {
+          console.log('Найден сохраненный токен, проверяем валидность');
+          this._logDebugInfo('Проверяем сохраненный токен');
+          this.authToken = savedToken;
+          const isValid = await this.validateToken(this.authToken);
+          if (isValid) {
+            console.log('Токен валиден, аутентификация успешна');
+            this._logDebugInfo('Токен валиден, аутентификация успешна');
+            this.initialized = true;
+            if (this.onInitComplete) this.onInitComplete();
+            return true;
+          }
+          console.log('Токен невалиден, требуется повторная аутентификация');
+          this._logDebugInfo('Токен невалиден, повторная аутентификация');
+        }
+        
+        // Если нет токена или он невалиден, аутентифицируемся заново
+        console.log('Выполняем аутентификацию с сервером...');
+        this._logDebugInfo('Выполняем аутентификацию с сервером');
+        const authResult = await this.authenticate();
+        console.log('Результат аутентификации:', authResult ? 'успешно' : 'неудача');
+        this._logDebugInfo(`Результат аутентификации: ${authResult ? 'успешно' : 'неудача'}`);
+        
+        this.initialized = authResult;
+        if (authResult && this.onInitComplete) this.onInitComplete();
+        return authResult;
+      } catch (error) {
+        console.error('Ошибка при аутентификации:', error.message);
+        this._logDebugInfo(`Ошибка при аутентификации: ${error.message}`);
+        return false;
+      }
+    } catch (initError) {
+      console.error('Критическая ошибка при инициализации TelegramService:', initError);
+      this._logDebugInfo(`Критическая ошибка: ${initError.message}`);
+      
+      // В режиме отладки пробуем запуститься без инициализации Telegram
+      if (this._isDebugMode()) {
+        console.warn('Попытка резервной инициализации после ошибки');
+        return await this.fallbackInitialization();
+      }
+      
       return false;
+    }
+  }
+  
+  /**
+   * Проверка режима отладки
+   * @private
+   */
+  _isDebugMode() {
+    return localStorage.getItem('debug_mode') === 'true' || 
+           process.env.NODE_ENV === 'development' || 
+           window.location.hostname === 'localhost' ||
+           window.location.search.includes('debug=true');
+  }
+
+  /**
+   * Запись отладочной информации
+   * @private
+   */
+  _logDebugInfo(message) {
+    try {
+      // Добавляем запись в HTML элемент для отладки
+      const debugElement = document.getElementById('debug-output');
+      if (debugElement) {
+        const timestamp = new Date().toISOString();
+        const logItem = document.createElement('div');
+        logItem.innerHTML = `• ${timestamp}: ${message}`;
+        logItem.style.color = 'lime';
+        logItem.style.fontSize = '12px';
+        logItem.style.marginBottom = '4px';
+        debugElement.appendChild(logItem);
+      }
+      
+      // Добавляем запись в localStorage для последующего анализа
+      let logs = [];
+      try {
+        const savedLogs = localStorage.getItem('debug_logs');
+        if (savedLogs) {
+          logs = JSON.parse(savedLogs);
+        }
+      } catch (e) {
+        logs = [];
+      }
+      
+      logs.push({
+        time: new Date().toISOString(),
+        message: message
+      });
+      
+      // Ограничиваем количество логов
+      if (logs.length > 50) {
+        logs = logs.slice(logs.length - 50);
+      }
+      
+      localStorage.setItem('debug_logs', JSON.stringify(logs));
+    } catch (error) {
+      console.error('Ошибка при логировании:', error);
     }
   }
   
@@ -122,16 +257,55 @@ export class TelegramService {
    */
   async fallbackInitialization() {
     console.warn('Используется резервная инициализация для отладки');
+    this._logDebugInfo('Используется резервная инициализация');
+    
+    // Создаем и добавляем отладочную панель, если ее еще нет
+    this._createDebugPanel();
     
     // Пробуем выполнить отладочный вход
     try {
-      const response = await fetch(`${this.apiBaseUrl}/api/debug-login`, {
+      // Пробуем использовать сохраненный токен для отладки сначала
+      const debugToken = localStorage.getItem('debug_token');
+      if (debugToken) {
+        console.log('Используем сохраненный отладочный токен');
+        this._logDebugInfo('Используем сохраненный отладочный токен');
+        this.authToken = debugToken;
+        localStorage.setItem('auth_token', debugToken);
+        this.initialized = true;
+        if (this.onInitComplete) this.onInitComplete();
+        return true;
+      }
+      
+      // Если нет сохраненного токена, запрашиваем новый
+      const apiUrl = this.apiBaseUrl || window.location.origin;
+      const response = await fetch(`${apiUrl}/api/debug-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
       
       if (!response.ok) {
-        console.error('Ошибка отладочного входа:', await response.text());
+        const errorText = await response.text();
+        console.error('Ошибка отладочного входа:', errorText);
+        this._logDebugInfo(`Ошибка отладочного входа: ${errorText}`);
+        
+        // Проверяем наличие альтернативных путей
+        if (this._isDebugMode()) {
+          console.warn('Продолжаем без аутентификации в режиме разработки');
+          this._logDebugInfo('Продолжаем без аутентификации в режиме разработки');
+          
+          // Создаем фиктивные данные для отладки
+          this.user = {
+            id: 123456789,
+            username: 'debug_user',
+            first_name: 'Debug',
+            last_name: 'User'
+          };
+          
+          this.initialized = true;
+          if (this.onInitComplete) this.onInitComplete();
+          return true;
+        }
+        
         return false;
       }
       
@@ -140,19 +314,135 @@ export class TelegramService {
       if (result.success && result.token) {
         this.authToken = result.token;
         localStorage.setItem('auth_token', result.token);
+        localStorage.setItem('debug_token', result.token);
+        
         if (result.user) {
+          this.user = result.user;
           localStorage.setItem('user_data', JSON.stringify(result.user));
         }
+        
         console.log('Отладочный вход выполнен успешно');
+        this._logDebugInfo('Отладочный вход выполнен успешно');
+        
+        this.initialized = true;
+        if (this.onInitComplete) this.onInitComplete();
         return true;
       }
       
       console.error('Отладочный вход не вернул валидные данные');
+      this._logDebugInfo('Отладочный вход не вернул валидные данные');
+      
+      // В режиме разработки продолжаем без аутентификации
+      if (this._isDebugMode()) {
+        console.warn('Продолжаем без токена в режиме разработки');
+        this._logDebugInfo('Продолжаем без токена в режиме разработки');
+        this.initialized = true;
+        if (this.onInitComplete) this.onInitComplete();
+        return true;
+      }
+      
       return false;
     } catch (error) {
       console.error('Ошибка при отладочном входе:', error.message);
+      this._logDebugInfo(`Ошибка при отладочном входе: ${error.message}`);
+      
+      // В режиме разработки продолжаем даже при ошибке
+      if (this._isDebugMode()) {
+        console.warn('Продолжаем после ошибки в режиме разработки');
+        this._logDebugInfo('Продолжаем после ошибки в режиме разработки');
+        this.initialized = true;
+        if (this.onInitComplete) this.onInitComplete();
+        return true;
+      }
+      
       return false;
     }
+  }
+  
+  /**
+   * Создает панель отладки в приложении
+   * @private
+   */
+  _createDebugPanel() {
+    // Проверяем, существует ли уже панель
+    if (document.getElementById('debug-panel')) {
+      return;
+    }
+    
+    // Создаем элементы отладочной панели
+    const debugPanel = document.createElement('div');
+    debugPanel.id = 'debug-panel';
+    debugPanel.style.position = 'fixed';
+    debugPanel.style.bottom = '0';
+    debugPanel.style.left = '0';
+    debugPanel.style.right = '0';
+    debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+    debugPanel.style.color = 'lime';
+    debugPanel.style.fontSize = '12px';
+    debugPanel.style.padding = '10px';
+    debugPanel.style.maxHeight = '200px';
+    debugPanel.style.overflow = 'auto';
+    debugPanel.style.zIndex = '9999';
+    debugPanel.style.borderTop = '1px solid lime';
+    
+    // Создаем заголовок
+    const header = document.createElement('div');
+    header.innerHTML = `• Версия: ${window.appVersion || '1.0'}`;
+    header.style.marginBottom = '5px';
+    debugPanel.appendChild(header);
+    
+    // Платформа
+    const platform = document.createElement('div');
+    platform.innerHTML = `• Платформа: ${window.Telegram?.WebApp?.platform || 'tdesktop'}`;
+    debugPanel.appendChild(platform);
+    
+    // Размер экрана
+    const viewport = document.createElement('div');
+    viewport.innerHTML = `• Viewport высота: ${window.innerHeight}px`;
+    debugPanel.appendChild(viewport);
+    
+    // initData
+    const initData = document.createElement('div');
+    initData.innerHTML = `• InitData: ${this.initData ? this.initData.substring(0, 50) + '...' : 'нет'}`;
+    debugPanel.appendChild(initData);
+    
+    // Контейнер для логов
+    const logContainer = document.createElement('div');
+    logContainer.id = 'debug-output';
+    logContainer.style.marginTop = '10px';
+    debugPanel.appendChild(logContainer);
+    
+    // Кнопка для скрытия/показа панели
+    const toggleButton = document.createElement('button');
+    toggleButton.textContent = 'Скрыть';
+    toggleButton.style.position = 'absolute';
+    toggleButton.style.top = '5px';
+    toggleButton.style.right = '5px';
+    toggleButton.style.background = 'transparent';
+    toggleButton.style.border = '1px solid lime';
+    toggleButton.style.color = 'lime';
+    toggleButton.style.padding = '3px 6px';
+    toggleButton.style.borderRadius = '3px';
+    toggleButton.style.fontSize = '10px';
+    
+    let isPanelVisible = true;
+    toggleButton.addEventListener('click', () => {
+      if (isPanelVisible) {
+        logContainer.style.display = 'none';
+        debugPanel.style.maxHeight = '30px';
+        toggleButton.textContent = 'Показать';
+      } else {
+        logContainer.style.display = 'block';
+        debugPanel.style.maxHeight = '200px';
+        toggleButton.textContent = 'Скрыть';
+      }
+      isPanelVisible = !isPanelVisible;
+    });
+    
+    debugPanel.appendChild(toggleButton);
+    
+    // Добавляем панель в DOM
+    document.body.appendChild(debugPanel);
   }
   
   /**
