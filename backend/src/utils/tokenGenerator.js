@@ -6,42 +6,37 @@ const logger = require('./logger');
 
 /**
  * Генерирует JWT токен для пользователя
- * @param {Object} user - Данные пользователя
- * @returns {String} - JWT токен
+ * @param {Object} user - объект пользователя
+ * @returns {string} JWT токен
  */
 const generateToken = (user) => {
   try {
-    const payload = {
-      id: user._id || user.id,
-      telegramId: user.telegramId,
-      isAdmin: user.isAdmin || false
-    };
-
-    const token = jwt.sign(
-      payload,
+    return jwt.sign(
+      { 
+        userId: user._id,
+        telegramId: user.telegramId,
+        username: user.username
+      },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
-
-    return token;
   } catch (error) {
     logger.error(`Error generating token: ${error.message}`);
-    throw new Error('Error generating authentication token');
+    throw error;
   }
 };
 
 /**
- * Проверяет и декодирует JWT токен
- * @param {String} token - JWT токен
- * @returns {Object} - Декодированные данные пользователя
+ * Верифицирует JWT токен
+ * @param {string} token - JWT токен
+ * @returns {Object} декодированные данные токена
  */
 const verifyToken = (token) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    return decoded;
+    return jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
     logger.error(`Error verifying token: ${error.message}`);
-    throw new Error('Invalid or expired token');
+    throw error;
   }
 };
 

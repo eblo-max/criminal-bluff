@@ -7,7 +7,6 @@ const { User } = require('../models');
 const logger = require('../utils/logger');
 const leaderboardController = require('../controllers/leaderboardController');
 const telegram = require('../config/telegram');
-const { startTransaction, captureException } = require('../config/sentry');
 
 /**
  * Обновить рейтинги пользователя
@@ -17,17 +16,10 @@ const { startTransaction, captureException } = require('../config/sentry');
  * @returns {Promise<boolean>} - Успешность обновления
  */
 const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
-  const transaction = startTransaction({
-    op: 'leaderboard',
-    name: 'update_user_leaderboards'
-  });
-
   try {
     // Проверяем входные данные
     if (!userId || gameScore === undefined || totalScore === undefined) {
       logger.error('Invalid parameters for updateUserLeaderboards');
-      transaction.setStatus('failed');
-      transaction.finish();
       return false;
     }
 
@@ -75,20 +67,8 @@ const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
       checkRankChangeAndNotify(userIdStr, allTimeKey, prevAllTimeRank, 'all-time')
     ]);
     
-    transaction.finish();
     return true;
   } catch (error) {
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    captureException(error, {
-      tags: {
-        component: 'leaderboardService',
-        method: 'updateUserLeaderboards',
-        userId
-      }
-    });
-    
     logger.error(`Error updating leaderboards: ${error.message}`);
     return false;
   }
@@ -103,11 +83,6 @@ const updateUserLeaderboards = async (userId, gameScore, totalScore) => {
  * @returns {Promise<boolean>} - Результат операции
  */
 const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leaderboardType) => {
-  const transaction = startTransaction({
-    op: 'leaderboard',
-    name: 'check_rank_change'
-  });
-
   try {
     // Получаем новый ранг
     const newRank = await redisService.getRank(leaderboardKey, userId);
@@ -120,7 +95,6 @@ const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leader
       // Если пользователь попал в топ-10, отправляем уведомление
       if (humanReadableRank <= 10) {
         await leaderboardController.notifyUserAboutRanking(userId, humanReadableRank, leaderboardType);
-        transaction.finish();
         return true;
       }
     } 
@@ -138,25 +112,12 @@ const checkRankChangeAndNotify = async (userId, leaderboardKey, prevRank, leader
           (humanReadableRank <= 10 && rankDifference >= 3) || 
           rankDifference >= 10) {
         await leaderboardController.notifyUserAboutRanking(userId, humanReadableRank, leaderboardType);
-        transaction.finish();
         return true;
       }
     }
     
-    transaction.finish();
     return false;
   } catch (error) {
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    captureException(error, {
-      tags: {
-        component: 'leaderboardService',
-        method: 'checkRankChangeAndNotify',
-        userId
-      }
-    });
-    
     logger.error(`Error checking rank change: ${error.message}`);
     return false;
   }
@@ -188,14 +149,18 @@ const updateWeeklyLeaderboard = async (weeklyKey, userId, score) => {
 /**
  * Получение недельного рейтинга в формате YYYY-WW
  * @param {Date} date - Дата
- * @returns {number} - Номер недели (1-53)
+ * @returns {number} - Номер недели (1-52/53)
  */
 function getWeekNumber(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  const target = new Date(date.valueOf());
+  const dayNumber = (date.getDay() + 6) % 7; // Делаем понедельник первым днем
+  target.setDate(target.getDate() - dayNumber + 3); // Ближайший четверг
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  return 1 + Math.ceil((firstThursday - target) / 604800000);
 }
 
 /**
@@ -203,24 +168,9 @@ function getWeekNumber(date) {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 const publishWeeklyLeaderboard = async () => {
-  const transaction = startTransaction({
-    op: 'leaderboard',
-    name: 'publish_weekly_leaderboard'
-  });
-
   try {
     return await leaderboardController.publishLeaderboardToTelegram('weekly');
   } catch (error) {
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    captureException(error, {
-      tags: {
-        component: 'leaderboardService',
-        method: 'publishWeeklyLeaderboard'
-      }
-    });
-    
     logger.error(`Error publishing weekly leaderboard: ${error.message}`);
     return false;
   }
@@ -231,24 +181,9 @@ const publishWeeklyLeaderboard = async () => {
  * @returns {Promise<boolean>} - Успешность публикации
  */
 const publishDailyLeaderboard = async () => {
-  const transaction = startTransaction({
-    op: 'leaderboard',
-    name: 'publish_daily_leaderboard'
-  });
-
   try {
     return await leaderboardController.publishLeaderboardToTelegram('daily');
   } catch (error) {
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    captureException(error, {
-      tags: {
-        component: 'leaderboardService',
-        method: 'publishDailyLeaderboard'
-      }
-    });
-    
     logger.error(`Error publishing daily leaderboard: ${error.message}`);
     return false;
   }

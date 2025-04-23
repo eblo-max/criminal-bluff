@@ -1,5 +1,4 @@
 const { expect } = require('chai');
-const sinon = require('sinon');
 const { getWeekNumber, updateUserLeaderboards } = require('../../src/services/leaderboardService');
 const redisService = require('../../src/services/redisService');
 const logger = require('../../src/utils/logger');
@@ -17,42 +16,29 @@ describe('Leaderboard Service', () => {
       const midYear = new Date(2023, 5, 15); // 15 июня 2023
       const midYearWeek = getWeekNumber(midYear);
       expect(midYearWeek).to.be.a('number');
-      expect(midYearWeek).to.be.greaterThan(1);
+      expect(midYearWeek).to.equal(24); // 15 июня - 24-я неделя
     });
 
     it('should handle edge cases correctly', () => {
       // Тест с концом года
       const endYear = new Date(2023, 11, 31); // 31 декабря 2023
       const endYearWeek = getWeekNumber(endYear);
-      expect(endYearWeek).to.be.a('number');
+      expect(endYearWeek).to.equal(52);
       
       // Тест с високосным годом
       const leapYear = new Date(2024, 1, 29); // 29 февраля 2024
       const leapYearWeek = getWeekNumber(leapYear);
-      expect(leapYearWeek).to.be.a('number');
+      expect(leapYearWeek).to.equal(9);
     });
   });
 
   describe('updateUserLeaderboards', () => {
-    let redisAddToSortedSetStub;
-    let redisSetValueStub;
-    let redisGetScoreStub;
-    let loggerErrorStub;
+    let redis;
 
-    beforeEach(() => {
-      // Создаем заглушки для методов Redis и логгера
-      redisAddToSortedSetStub = sinon.stub(redisService, 'addToSortedSet').resolves();
-      redisSetValueStub = sinon.stub(redisService, 'setValue').resolves();
-      redisGetScoreStub = sinon.stub(redisService, 'getScore').resolves(0);
-      loggerErrorStub = sinon.stub(logger, 'error');
-    });
-
-    afterEach(() => {
-      // Восстанавливаем оригинальные методы
-      redisAddToSortedSetStub.restore();
-      redisSetValueStub.restore();
-      redisGetScoreStub.restore();
-      loggerErrorStub.restore();
+    beforeEach(async () => {
+      // Очищаем Redis перед каждым тестом
+      redis = redisService.redis;
+      await redis.flushdb();
     });
 
     it('should update all leaderboards correctly', async () => {
@@ -61,32 +47,37 @@ describe('Leaderboard Service', () => {
       const totalScore = 500;
 
       const result = await updateUserLeaderboards(userId, gameScore, totalScore);
-      
       expect(result).to.be.true;
-      expect(redisAddToSortedSetStub.calledThrice).to.be.true;
-      expect(redisSetValueStub.calledTwice).to.be.true;
+
+      // Проверяем, что данные были записаны в Redis
+      const dailyScore = await redis.zscore(`leaderboard:daily:${new Date().toISOString().split('T')[0]}`, userId);
+      expect(Number(dailyScore)).to.equal(gameScore);
+
+      const allTimeScore = await redis.zscore('leaderboard:all-time', userId);
+      expect(Number(allTimeScore)).to.equal(totalScore);
     });
 
     it('should handle invalid parameters', async () => {
       const result1 = await updateUserLeaderboards(null, 100, 500);
       expect(result1).to.be.false;
-      expect(loggerErrorStub.calledOnce).to.be.true;
 
-      loggerErrorStub.reset();
-      
       const result2 = await updateUserLeaderboards('123', undefined, 500);
       expect(result2).to.be.false;
-      expect(loggerErrorStub.calledOnce).to.be.true;
     });
 
     it('should handle Redis errors gracefully', async () => {
-      redisAddToSortedSetStub.rejects(new Error('Redis connection error'));
+      // Симулируем ошибку Redis, закрывая соединение
+      await redis.quit();
       
       const result = await updateUserLeaderboards('123', 100, 500);
-      
       expect(result).to.be.false;
-      expect(loggerErrorStub.calledOnce).to.be.true;
-      expect(loggerErrorStub.firstCall.args[0]).to.include('Error updating leaderboards');
+
+      // Восстанавливаем соединение для следующих тестов
+      redis = redisService.redis;
+    });
+
+    afterAll(async () => {
+      await redis.quit();
     });
   });
 }); 

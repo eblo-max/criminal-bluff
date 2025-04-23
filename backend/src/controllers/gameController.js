@@ -3,491 +3,283 @@
  */
 const { Story, GameSession, User } = require('../models');
 const logger = require('../utils/logger');
-const { calculateScore } = require('../utils/scoreCalculator');
-const { checkAchievements } = require('../utils/achievementChecker');
-const redisService = require('../services/redisService');
-const leaderboardService = require('../services/leaderboardService');
-const { startTransaction, captureException } = require('../config/sentry');
+const gameLogicService = require('../services/gameLogicService');
+const cacheService = require('../services/cacheService');
+const { asyncHandler } = require('../middlewares/errorMiddleware');
+const { ResourceNotFoundError, GameLogicError } = require('../utils/errors');
 
 /**
- * Начать новую игру
- * Получить 5 случайных историй и создать игровую сессию
+ * Получить 5 случайных историй
+ * GET /api/game/stories
  */
-exports.startGame = async (req, res) => {
-  // Создаем транзакцию Sentry для отслеживания производительности
-  const transaction = startTransaction({
-    op: 'game',
-    name: 'start_game'
-  });
-  
+exports.getRandomStories = async (req, res) => {
   try {
-    const user = req.user;
+    // Пробуем получить истории из кэша
+    const cachedStories = await cacheService.getStoriesCache();
     
-    // Проверяем наличие активной сессии
-    const activeSession = await GameSession.findOne({
-      userId: user._id,
-      status: 'active'
-    });
-    
-    // Если есть активная сессия, продолжаем её
-    if (activeSession) {
-      const stories = await Story.find({
-        _id: { $in: activeSession.stories }
-      });
-      
-      transaction.finish();
+    if (cachedStories) {
       return res.status(200).json({
         success: true,
-        message: 'Найдена активная игровая сессия',
-        id: activeSession._id,
-        stories,
-        currentStory: activeSession.currentStory,
-        streak: activeSession.streak
+        stories: cachedStories
       });
     }
-    
-    // Получаем случайные истории (с учетом сложности и разных категорий)
-    const totalStories = await Story.countDocuments({ active: true });
-    
-    // Если историй недостаточно, возвращаем ошибку
-    if (totalStories < 5) {
-      transaction.setStatus('failed');
-      transaction.finish();
+
+    // Получаем случайные истории с разными категориями
+    const stories = await Story.aggregate([
+      { $match: { active: true } },
+      { $group: { 
+        _id: '$category',
+        stories: { $push: '$$ROOT' }
+      }},
+      { $unwind: '$stories' },
+      { $sample: { size: 5 } },
+      { $project: {
+        _id: '$stories._id',
+        text: '$stories.text',
+        options: '$stories.options',
+        difficulty: '$stories.difficulty',
+        category: '$stories.category'
+      }}
+    ]);
+
+    if (stories.length < 5) {
       return res.status(404).json({
         success: false,
         message: 'Недостаточно историй для начала игры'
       });
     }
-    
-    // Агрегация для получения 5 случайных историй с разнообразием
-    const stories = await Story.aggregate([
-      { $match: { active: true } },
-      { $sample: { size: 5 } }
-    ]);
-    
-    // Создаем новую игровую сессию
-    const gameSession = new GameSession({
-      userId: user._id,
-      telegramId: user.telegramId,
-      stories: stories.map(story => story._id),
-      status: 'active',
-      startedAt: new Date()
-    });
-    
-    await gameSession.save();
-    
-    // Обновляем статус пользователя
-    await User.findByIdAndUpdate(user._id, {
-      lastPlayed: new Date()
-    });
-    
-    // Добавляем достижение "Новичок", если это первая игра
-    if (user.gamesPlayed === 0) {
-      const newAchievement = {
-        name: 'Новичок',
-        description: 'Сыграть первую игру',
-        unlockedAt: new Date()
-      };
-      
-      await User.findByIdAndUpdate(user._id, {
-        $push: { achievements: newAchievement }
-      });
-    }
-    
-    // Завершаем транзакцию
-    transaction.finish();
-    
-    // Возвращаем данные для начала игры
+
+    // Кэшируем результат
+    await cacheService.cacheStories(stories);
+
     return res.status(200).json({
       success: true,
-      message: 'Новая игра успешно начата',
+      stories
+    });
+  } catch (error) {
+    logger.error(`Error getting random stories: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Ошибка при получении историй'
+    });
+  }
+};
+
+/**
+ * @desc    Начать новую игру
+ * @route   POST /api/game/start
+ * @access  Private
+ */
+const startGame = asyncHandler(async (req, res) => {
+  const { difficulty, category } = req.body;
+
+  // Проверяем наличие активной сессии
+  const activeSession = await GameSession.findOne({
+    userId: req.user._id,
+    status: 'active'
+  });
+
+  if (activeSession) {
+    return res.status(400).json({
+      success: false,
+      message: 'У вас уже есть активная игровая сессия'
+    });
+  }
+
+  // Получаем случайные истории
+  const stories = await Story.aggregate([
+    { $match: { active: true, ...(category && { category }) } },
+    { $sample: { size: 5 } }
+  ]);
+
+  if (stories.length < 5) {
+    return res.status(404).json({
+      success: false,
+      message: 'Недостаточно историй для начала игры'
+    });
+  }
+
+  // Создаем новую игровую сессию
+  const gameSession = await GameSession.create({
+    userId: req.user._id,
+    stories: stories.map(story => story._id),
+    difficulty,
+    category,
+    startTime: new Date(),
+    status: 'active'
+  });
+
+  return res.status(201).json({
+    success: true,
+    gameSession: {
       id: gameSession._id,
-      stories,
       currentStory: 0,
-      streak: 0
-    });
-    
-  } catch (error) {
-    // Отмечаем транзакцию как неудачную и завершаем её
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    // Отправляем ошибку в Sentry
-    captureException(error, {
-      tags: {
-        component: 'gameController',
-        method: 'startGame',
-        userId: req.user?._id
-      }
-    });
-    
-    logger.error(`Error starting game: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: 'Ошибка при начале игры'
-    });
-  }
-};
+      totalStories: stories.length,
+      stories: stories.map(({ correctAnswer, explanation, ...story }) => story)
+    }
+  });
+});
 
 /**
- * Отправить ответ на текущую историю
+ * @desc    Отправить ответ на вопрос
+ * @route   POST /api/game/answer
+ * @access  Private
  */
-exports.submitAnswer = async (req, res) => {
-  // Создаем транзакцию Sentry для отслеживания производительности
-  const transaction = startTransaction({
-    op: 'game',
-    name: 'submit_answer'
-  });
-  
-  try {
-    const user = req.user;
-    const { gameId, storyId, selectedOption, responseTime } = req.body;
-    
-    // Проверка наличия всех нужных данных
-    if (!gameId || !storyId) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(400).json({
-        success: false,
-        message: 'Не указан ID игры или истории'
-      });
-    }
-    
-    // Получаем игровую сессию
-    const gameSession = await GameSession.findOne({
-      _id: gameId,
-      userId: user._id,
-      status: 'active'
-    });
-    
-    if (!gameSession) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(404).json({
-        success: false,
-        message: 'Активная игровая сессия не найдена'
-      });
-    }
-    
-    // Получаем текущую историю
-    const story = await Story.findById(storyId);
-    
-    if (!story) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(404).json({
-        success: false,
-        message: 'История не найдена'
-      });
-    }
-    
-    // Проверяем, не отвечали ли уже на эту историю
-    const alreadyAnswered = gameSession.answers.some(a => a.storyId.toString() === storyId);
-    
-    if (alreadyAnswered) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(400).json({
-        success: false,
-        message: 'Вы уже ответили на эту историю'
-      });
-    }
-    
-    // Проверяем правильность ответа
-    const isCorrect = selectedOption === story.correctAnswer;
-    
-    // Вычисляем очки за ответ
-    const pointsEarned = calculateScore(
-      isCorrect,
-      responseTime,
-      gameSession.streak
-    );
-    
-    // Обновляем серию правильных ответов
-    let newStreak = gameSession.streak || 0;
-    
-    if (isCorrect) {
-      newStreak += 1;
-    } else {
-      newStreak = 0;
-    }
-    
-    // Создаем запись ответа
-    const answerData = {
-      storyId: story._id,
-      selectedOption,
-      isCorrect,
-      responseTime,
-      pointsEarned,
-      answeredAt: new Date()
-    };
-    
-    // Обновляем игровую сессию
-    gameSession.answers.push(answerData);
-    gameSession.streak = newStreak;
-    gameSession.totalScore += pointsEarned;
-    gameSession.currentStory += 1;
-    
-    // Завершаем игру, если все истории отвечены
-    if (gameSession.answers.length >= gameSession.stories.length) {
-      gameSession.status = 'completed';
-      gameSession.completedAt = new Date();
-    }
-    
-    await gameSession.save();
-    
-    // Проверяем достижения
-    if (isCorrect) {
-      if (responseTime <= 3000) {
-        // Достижение "Скоростной детектив"
-        await checkAchievements(user._id, 'speed');
-      }
-      
-      if (newStreak >= 10) {
-        // Достижение "Эксперт"
-        await checkAchievements(user._id, 'streak');
-      }
-    }
-    
-    // Завершаем транзакцию
-    transaction.finish();
-    
-    // Возвращаем результат
-    return res.status(200).json({
-      success: true,
-      message: 'Ответ успешно отправлен',
-      isCorrect,
-      pointsEarned,
-      explanation: story.explanation,
-      gameSession
-    });
-    
-  } catch (error) {
-    // Отмечаем транзакцию как неудачную и завершаем её
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    // Отправляем ошибку в Sentry
-    captureException(error, {
-      tags: {
-        component: 'gameController',
-        method: 'submitAnswer',
-        userId: req.user?._id,
-        gameId: req.body?.gameId,
-        storyId: req.body?.storyId
-      }
-    });
-    
-    logger.error(`Error submitting answer: ${error.message}`);
-    return res.status(500).json({
+const submitAnswer = asyncHandler(async (req, res) => {
+  const { storyId, selectedAnswer, timeSpent } = req.body;
+
+  const gameSession = await GameSession.findOne({
+    userId: req.user._id,
+    status: 'active'
+  }).populate('stories');
+
+  if (!gameSession) {
+    return res.status(404).json({
       success: false,
-      message: 'Ошибка при отправке ответа'
+      message: 'Активная игровая сессия не найдена'
     });
   }
-};
 
-/**
- * Завершить текущую игру
- */
-exports.finishGame = async (req, res) => {
-  // Создаем транзакцию Sentry для отслеживания производительности
-  const transaction = startTransaction({
-    op: 'game',
-    name: 'finish_game'
-  });
-  
-  try {
-    const user = req.user;
-    const { gameId } = req.body;
-    
-    if (!gameId) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(400).json({
-        success: false,
-        message: 'Не указан ID игры'
-      });
-    }
-    
-    // Получаем игровую сессию
-    const gameSession = await GameSession.findOne({
-      _id: gameId,
-      userId: user._id
+  const currentStory = gameSession.stories[gameSession.currentStory];
+  if (currentStory._id.toString() !== storyId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Неверный ID истории'
     });
-    
-    if (!gameSession) {
-      transaction.setStatus('failed');
-      transaction.finish();
-      return res.status(404).json({
-        success: false,
-        message: 'Игровая сессия не найдена'
-      });
-    }
-    
-    // Если игра уже завершена, просто возвращаем результаты
-    if (gameSession.status === 'completed') {
-      // Считаем статистику
-      const correctAnswers = gameSession.answers.filter(a => a.isCorrect).length;
-      const totalScore = gameSession.totalScore;
-      const bestStreak = gameSession.streak;
-      
-      transaction.finish();
-      return res.status(200).json({
-        success: true,
-        message: 'Игра уже завершена',
-        correctAnswers,
-        totalScore,
-        bestStreak
-      });
-    }
-    
-    // Завершаем игру
+  }
+
+  const isCorrect = selectedAnswer === currentStory.correctAnswer;
+  const points = calculatePoints(isCorrect, timeSpent, gameSession.difficulty);
+
+  // Обновляем статистику сессии
+  gameSession.answers.push({
+    storyId,
+    selectedAnswer,
+    isCorrect,
+    timeSpent,
+    points
+  });
+
+  gameSession.currentStory += 1;
+  gameSession.totalScore += points;
+  gameSession.streak = isCorrect ? gameSession.streak + 1 : 0;
+
+  if (gameSession.currentStory >= gameSession.stories.length) {
     gameSession.status = 'completed';
-    gameSession.completedAt = new Date();
-    await gameSession.save();
-    
-    // Обновляем статистику пользователя
-    const correctAnswers = gameSession.answers.filter(a => a.isCorrect).length;
-    const totalScore = gameSession.totalScore;
-    
-    // Получаем пользователя для обновления
-    const userToUpdate = await User.findById(user._id);
-    
-    // Вычисляем лучшую серию
-    const bestStreak = Math.max(userToUpdate.bestStreak || 0, gameSession.streak || 0);
-    
-    // Обновляем статистику пользователя
-    userToUpdate.gamesPlayed += 1;
-    userToUpdate.score += totalScore;
-    userToUpdate.correctAnswers += correctAnswers;
-    userToUpdate.bestStreak = bestStreak;
-    userToUpdate.lastPlayed = new Date();
-    
-    await userToUpdate.save();
-    
-    // Обновляем рейтинги через leaderboardService
-    try {
-      await leaderboardService.updateUserLeaderboards(
-        user._id, 
-        totalScore, 
-        userToUpdate.score
-      );
-    } catch (leaderboardError) {
-      logger.error(`Error updating leaderboards: ${leaderboardError.message}`);
-      // Не прерываем выполнение в случае ошибки с рейтингами
-    }
-    
-    // Проверяем достижение "Серийный игрок"
-    if (userToUpdate.gamesPlayed >= 100) {
-      await checkAchievements(user._id, 'serial');
-    }
-    
-    // Проверяем достижение "Мастер дедукции"
-    if (correctAnswers === 5) {
-      await checkAchievements(user._id, 'master');
-    }
-    
-    // Завершаем транзакцию
-    transaction.finish();
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Игра успешно завершена',
-      correctAnswers,
-      totalScore,
-      bestStreak: Math.max(bestStreak, gameSession.streak || 0)
-    });
-    
-  } catch (error) {
-    // Отмечаем транзакцию как неудачную и завершаем её
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    // Отправляем ошибку в Sentry
-    captureException(error, {
-      tags: {
-        component: 'gameController',
-        method: 'finishGame',
-        userId: req.user?._id,
-        gameId: req.body?.gameId
-      },
-      level: 'fatal' // Критическая ошибка, т.к. может привести к потере прогресса игрока
-    });
-    
-    logger.error(`Error finishing game: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: 'Ошибка при завершении игры'
-    });
+    gameSession.endTime = new Date();
   }
-};
+
+  await gameSession.save();
+
+  return res.json({
+    success: true,
+    result: {
+      isCorrect,
+      points,
+      streak: gameSession.streak,
+      explanation: currentStory.explanation,
+      correctAnswer: currentStory.correctAnswer
+    }
+  });
+});
 
 /**
- * Получить текущую активную игровую сессию
+ * @desc    Завершить игру
+ * @route   POST /api/game/finish
+ * @access  Private
  */
-exports.getCurrentGame = async (req, res) => {
-  // Создаем транзакцию Sentry для отслеживания производительности
-  const transaction = startTransaction({
-    op: 'game',
-    name: 'get_current_game'
+const finishGame = asyncHandler(async (req, res) => {
+  const gameSession = await GameSession.findOne({
+    userId: req.user._id,
+    status: 'active'
   });
-  
-  try {
-    const user = req.user;
-    
-    // Ищем активную сессию
-    const gameSession = await GameSession.findOne({
-      userId: user._id,
-      status: 'active'
-    });
-    
-    if (!gameSession) {
-      transaction.finish();
-      return res.status(404).json({
-        success: false,
-        message: 'Активная игровая сессия не найдена'
-      });
-    }
-    
-    // Получаем истории
-    const stories = await Story.find({
-      _id: { $in: gameSession.stories }
-    });
-    
-    // Завершаем транзакцию
-    transaction.finish();
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Активная игровая сессия найдена',
-      id: gameSession._id,
-      stories,
-      answers: gameSession.answers,
-      currentStory: gameSession.currentStory,
-      streak: gameSession.streak,
-      totalScore: gameSession.totalScore
-    });
-    
-  } catch (error) {
-    // Отмечаем транзакцию как неудачную и завершаем её
-    transaction.setStatus('error');
-    transaction.finish();
-    
-    // Отправляем ошибку в Sentry
-    captureException(error, {
-      tags: {
-        component: 'gameController',
-        method: 'getCurrentGame',
-        userId: req.user?._id
-      }
-    });
-    
-    logger.error(`Error getting current game: ${error.message}`);
-    return res.status(500).json({
+
+  if (!gameSession) {
+    return res.status(404).json({
       success: false,
-      message: 'Ошибка при получении текущей игры'
+      message: 'Активная игровая сессия не найдена'
     });
   }
+
+  gameSession.status = 'completed';
+  gameSession.endTime = new Date();
+  await gameSession.save();
+
+  // Обновляем статистику пользователя
+  const user = await User.findById(req.user._id);
+  user.gamesPlayed += 1;
+  user.totalScore += gameSession.totalScore;
+  user.bestStreak = Math.max(user.bestStreak, gameSession.streak);
+  await user.save();
+
+  return res.json({
+    success: true,
+    stats: {
+      totalScore: gameSession.totalScore,
+      correctAnswers: gameSession.answers.filter(a => a.isCorrect).length,
+      streak: gameSession.streak,
+      averageTime: Math.round(gameSession.answers.reduce((acc, a) => acc + a.timeSpent, 0) / gameSession.answers.length)
+    }
+  });
+});
+
+/**
+ * @desc    Получить текущую игру
+ * @route   GET /api/game/current
+ * @access  Private
+ */
+const getCurrentGame = asyncHandler(async (req, res) => {
+  const gameSession = await GameSession.findOne({
+    userId: req.user._id,
+    status: 'active'
+  }).populate('stories');
+
+  if (!gameSession) {
+    return res.status(404).json({
+      success: false,
+      message: 'Активная игровая сессия не найдена'
+    });
+  }
+
+  // Скрываем правильные ответы для текущей и будущих историй
+  const sanitizedStories = gameSession.stories.map((story, index) => {
+    if (index >= gameSession.currentStory) {
+      const { correctAnswer, explanation, ...safeStory } = story.toObject();
+      return safeStory;
+    }
+    return story;
+  });
+
+  return res.json({
+    success: true,
+    gameSession: {
+      ...gameSession.toObject(),
+      stories: sanitizedStories
+    }
+  });
+});
+
+/**
+ * Вспомогательная функция для расчета очков
+ */
+function calculatePoints(isCorrect, timeSpent, difficulty) {
+  if (!isCorrect) return 0;
+
+  const basePoints = {
+    easy: 100,
+    medium: 200,
+    hard: 300
+  }[difficulty] || 100;
+
+  const timeBonus = Math.max(0, Math.floor((30000 - timeSpent) / 1000)) * 10;
+  return basePoints + timeBonus;
+}
+
+module.exports = {
+  startGame,
+  submitAnswer,
+  finishGame,
+  getCurrentGame
 };
 
 /**

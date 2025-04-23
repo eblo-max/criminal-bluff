@@ -1,0 +1,159 @@
+/* Фильтры достижений */
+.achievement-filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.achievement-filter {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: none;
+  background: var(--tg-theme-secondary-bg-color, #2c2c2c);
+  color: var(--tg-theme-text-color, #fff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.achievement-filter:hover {
+  background: var(--tg-theme-button-color, #3390ec);
+}
+
+.achievement-filter.active {
+  background: var(--tg-theme-button-color, #3390ec);
+  font-weight: bold;
+}
+
+/* Список достижений */
+.achievements-list {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+/* Карточка достижения */
+.achievement-item {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--tg-theme-secondary-bg-color, #2c2c2c);
+  transition: transform 0.2s ease;
+}
+
+.achievement-item:hover {
+  transform: translateY(-2px);
+}
+
+/* Иконка достижения */
+.achievement-icon {
+  font-size: 32px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tg-theme-bg-color, #1c1c1c);
+  border-radius: 12px;
+}
+
+/* Информация о достижении */
+.achievement-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.achievement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.achievement-name {
+  font-weight: bold;
+  font-size: 1.1em;
+}
+
+.achievement-points {
+  font-size: 0.9em;
+  color: var(--tg-theme-hint-color, #aaa);
+  background: var(--tg-theme-bg-color, #1c1c1c);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.achievement-description {
+  font-size: 0.9em;
+  color: var(--tg-theme-hint-color, #aaa);
+  line-height: 1.4;
+}
+
+/* Прогресс достижения */
+.achievement-progress {
+  margin-top: 8px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--tg-theme-bg-color, #1c1c1c);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--tg-theme-button-color, #3390ec);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.8em;
+  color: var(--tg-theme-hint-color, #aaa);
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* Статус разблокировки */
+.achievement-unlocked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  color: var(--tg-theme-button-color, #3390ec);
+}
+
+.check-icon {
+  font-size: 1.2em;
+}
+
+/* Стили для заблокированных достижений */
+.achievement-locked {
+  opacity: 0.7;
+}
+
+.achievement-locked .achievement-icon {
+  filter: grayscale(1);
+}
+
+/* Стили для разных редкостей */
+.achievement-common {
+  border: 1px solid #666;
+}
+
+.achievement-rare {
+  border: 1px solid #4a9eff;
+}
+
+.achievement-epic {
+  border: 1px solid #b702ff;
+  box-shadow: 0 0 10px rgba(183, 2, 255, 0.2);
+}
+
+.achievement-legendary {
+  border: 1px solid #ffd700;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
+  background: linear-gradient(45deg, rgba(255, 215, 0, 0.1), rgba(255, 215, 0, 0.05));
+} 

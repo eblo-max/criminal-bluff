@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const leaderboardController = require('../controllers/leaderboardController');
-const authMiddleware = require('../middlewares/authMiddleware');
+const { authMiddleware } = require('../middlewares/authMiddleware');
 
 // Apply auth middleware to all leaderboard routes
 router.use(authMiddleware);

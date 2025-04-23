@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { User } = require('../models');
 const logger = require('../utils/logger');
+const { AppError } = require('./errorMiddleware');
+const config = require('../config/auth');
 
 /**
  * Verify the Telegram WebApp initData
@@ -154,4 +156,52 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
-module.exports = authMiddleware; 
+/**
+ * Middleware для защиты маршрутов
+ */
+const protect = async (req, res, next) => {
+  try {
+    // Получаем токен из заголовка
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      throw new AppError('Не авторизован', 401);
+    }
+
+    // Проверяем токен
+    const decoded = jwt.verify(token, config.jwtSecret);
+
+    // Получаем пользователя
+    const user = await User.findById(decoded.id).select('-password');
+    if (!user) {
+      throw new AppError('Пользователь не найден', 401);
+    }
+
+    // Добавляем пользователя в запрос
+    req.user = user;
+    next();
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError') {
+      throw new AppError('Невалидный токен', 401);
+    }
+    if (err.name === 'TokenExpiredError') {
+      throw new AppError('Токен истек', 401);
+    }
+    throw err;
+  }
+};
+
+/**
+ * Middleware для проверки роли админа
+ */
+const admin = (req, res, next) => {
+  if (!req.user || !req.user.isAdmin) {
+    throw new AppError('Нет прав доступа', 403);
+  }
+  next();
+};
+
+module.exports = {
+  authMiddleware,
+  protect,
+  admin
+}; 

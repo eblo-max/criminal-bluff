@@ -15,7 +15,11 @@ class ProfileScreen {
     this.bestStreakElement = this.container.querySelector('#profile-best-streak');
     this.rankPositionElement = this.container.querySelector('#rank-position');
     this.achievementsListElement = this.container.querySelector('#achievements-list');
+    this.achievementFiltersElement = document.getElementById('achievement-filters');
     this.statsChartContainer = this.container.querySelector('.stats-chart-container');
+    
+    // Инициализация фильтров
+    this.initializeFilters();
   }
 
   /**
@@ -47,6 +51,80 @@ class ProfileScreen {
       console.error('Error loading profile:', error);
       this.uiService.hideLoading();
       this.uiService.showError('Ошибка при загрузке профиля');
+    }
+  }
+
+  /**
+   * Инициализация фильтров достижений
+   */
+  initializeFilters() {
+    const categories = ['all', 'gameplay', 'accuracy', 'streak', 'social', 'meta'];
+    
+    this.achievementFiltersElement.innerHTML = categories.map(category => `
+      <button class="achievement-filter ${category === 'all' ? 'active' : ''}" data-category="${category}">
+        ${this.getCategoryLabel(category)}
+      </button>
+    `).join('');
+
+    // Обработчики для фильтров
+    this.achievementFiltersElement.addEventListener('click', (e) => {
+      if (e.target.classList.contains('achievement-filter')) {
+        // Убираем active со всех кнопок
+        this.achievementFiltersElement.querySelectorAll('.achievement-filter').forEach(btn => 
+          btn.classList.remove('active')
+        );
+        // Добавляем active на нажатую кнопку
+        e.target.classList.add('active');
+        // Обновляем достижения с выбранным фильтром
+        this.loadAchievements(e.target.dataset.category);
+      }
+    });
+  }
+
+  /**
+   * Получить локализованное название категории
+   */
+  getCategoryLabel(category) {
+    const labels = {
+      'all': 'Все',
+      'gameplay': 'Игровой процесс',
+      'accuracy': 'Точность',
+      'streak': 'Серии',
+      'social': 'Социальные',
+      'meta': 'Мета'
+    };
+    return labels[category] || category;
+  }
+
+  /**
+   * Получить CSS класс для редкости достижения
+   */
+  getRarityClass(rarity) {
+    const classes = {
+      'common': 'achievement-common',
+      'rare': 'achievement-rare',
+      'epic': 'achievement-epic',
+      'legendary': 'achievement-legendary'
+    };
+    return classes[rarity] || 'achievement-common';
+  }
+
+  /**
+   * Загрузка достижений с фильтрацией
+   */
+  async loadAchievements(category = 'all') {
+    try {
+      const url = category === 'all' ? 
+        '/api/user/achievements' : 
+        `/api/user/achievements?category=${category}`;
+      
+      const response = await this.apiService.get(url);
+      if (response.success) {
+        this.renderAchievements(response.achievements, response.unearned);
+      }
+    } catch (error) {
+      console.error('Error loading achievements:', error);
+      this.uiService.showError('Ошибка при загрузке достижений');
     }
   }
 
@@ -84,60 +162,62 @@ class ProfileScreen {
 
   /**
    * Отрисовка достижений пользователя
-   * @param {Array} achievements - Массив достижений
    */
-  renderAchievements(achievements) {
-    // Все возможные достижения
-    const allAchievements = [
-      {
-        name: 'Новичок',
-        description: 'Сыграть первую игру',
-        icon: '🎮'
-      },
-      {
-        name: 'Эксперт',
-        description: '10 правильных ответов подряд',
-        icon: '🧠'
-      },
-      {
-        name: 'Мастер дедукции',
-        description: '100% точность в 5 играх подряд',
-        icon: '🔍'
-      },
-      {
-        name: 'Скоростной детектив',
-        description: 'Правильный ответ за 3 секунды',
-        icon: '⚡'
-      },
-      {
-        name: 'Серийный игрок',
-        description: '100 сыгранных игр',
-        icon: '🏆'
-      }
-    ];
-    
+  renderAchievements(unlocked = [], unearned = []) {
     this.achievementsListElement.innerHTML = '';
     
-    // Отображение всех достижений с пометкой "разблокировано" или "заблокировано"
-    allAchievements.forEach(achievement => {
-      // Проверяем, получено ли это достижение
-      const isUnlocked = Array.isArray(achievements) && 
-        achievements.some(a => a.name === achievement.name);
-      
-      const achievementItem = document.createElement('div');
-      achievementItem.className = `achievement-item ${isUnlocked ? '' : 'achievement-locked'}`;
-      
-      achievementItem.innerHTML = `
-        <div class="achievement-icon">${achievement.icon}</div>
-        <div class="achievement-info">
-          <div class="achievement-name">${achievement.name}</div>
-          <div class="achievement-description">${achievement.description}</div>
-          ${isUnlocked ? '<div class="achievement-unlocked">✓ Получено</div>' : ''}
+    // Сначала отображаем разблокированные достижения
+    unlocked.forEach(achievement => {
+      const achievementElement = this.createAchievementElement(achievement, true);
+      this.achievementsListElement.appendChild(achievementElement);
+    });
+    
+    // Затем отображаем неразблокированные
+    unearned.forEach(achievement => {
+      const achievementElement = this.createAchievementElement(achievement, false);
+      this.achievementsListElement.appendChild(achievementElement);
+    });
+  }
+
+  /**
+   * Создание элемента достижения
+   */
+  createAchievementElement(achievement, isUnlocked) {
+    const achievementItem = document.createElement('div');
+    achievementItem.className = `achievement-item ${isUnlocked ? '' : 'achievement-locked'} ${this.getRarityClass(achievement.rarity)}`;
+    
+    let progressHtml = '';
+    if (!isUnlocked && achievement.goal) {
+      const progressPercent = Math.min(100, Math.round((achievement.progress / achievement.goal) * 100));
+      progressHtml = `
+        <div class="achievement-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${progressPercent}%"></div>
+          </div>
+          <div class="progress-text">${achievement.progress}/${achievement.goal}</div>
         </div>
       `;
-      
-      this.achievementsListElement.appendChild(achievementItem);
-    });
+    }
+    
+    achievementItem.innerHTML = `
+      <div class="achievement-icon">${achievement.icon}</div>
+      <div class="achievement-info">
+        <div class="achievement-header">
+          <div class="achievement-name">${achievement.name}</div>
+          <div class="achievement-points">+${achievement.points}</div>
+        </div>
+        <div class="achievement-description">${achievement.description}</div>
+        ${progressHtml}
+        ${isUnlocked ? `
+          <div class="achievement-unlocked">
+            <span class="check-icon">✓</span>
+            Получено ${new Date(achievement.unlockedAt).toLocaleDateString()}
+          </div>
+        ` : ''}
+      </div>
+    `;
+    
+    return achievementItem;
   }
 
   /**

@@ -2,81 +2,80 @@
  * Контроллер для управления пользователями
  */
 const { User } = require('../models');
-const { generateToken } = require('../utils/tokenGenerator');
 const logger = require('../utils/logger');
 const redisService = require('../services/redisService');
+const cacheService = require('../services/cacheService');
+const { asyncHandler } = require('../middlewares/errorMiddleware');
+const { ResourceNotFoundError, ValidationError } = require('../utils/errors');
+const jwt = require('jsonwebtoken');
+const { generateToken } = require('../utils/tokenGenerator');
+const { leaderboardController } = require('./leaderboardController');
+const gameLogicService = require('../services/gameLogicService');
+const { userValidation } = require('../middlewares/validationMiddleware');
+const { userValidationRules } = require('../middlewares/validationMiddleware');
 
 /**
- * Получить/создать пользователя по данным из Telegram
+ * Создать/обновить пользователя по данным из Telegram
+ * POST /api/user/create
  */
-exports.getOrCreateUser = async (req, res) => {
+exports.createUser = async (req, res) => {
   try {
-    const { telegramData } = req;
-    
-    if (!telegramData || !telegramData.id) {
+    const { telegramId, username, firstName, lastName, photoUrl, languageCode } = req.body;
+
+    if (!telegramId) {
       return res.status(400).json({
         success: false,
-        message: 'Недостаточно данных для авторизации'
+        message: 'Telegram ID обязателен'
       });
     }
-    
-    // Поиск пользователя по Telegram ID
-    let user = await User.findOne({ telegramId: telegramData.id });
-    
-    // Если пользователь не найден, создаем нового
-    if (!user) {
+
+    // Ищем существующего пользователя
+    let user = await User.findOne({ telegramId });
+
+    if (user) {
+      // Обновляем существующего пользователя
+      user = await User.findOneAndUpdate(
+        { telegramId },
+        {
+          $set: {
+            username: username || user.username,
+            firstName: firstName || user.firstName,
+            lastName: lastName || user.lastName,
+            photoUrl: photoUrl || user.photoUrl,
+            languageCode: languageCode || user.languageCode,
+            updatedAt: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      // Создаем нового пользователя
       user = new User({
-        telegramId: telegramData.id,
-        username: telegramData.username || `user_${telegramData.id}`,
-        firstName: telegramData.first_name || '',
-        lastName: telegramData.last_name || '',
-        photoUrl: telegramData.photo_url || '',
-        language: telegramData.language_code || 'ru',
+        telegramId,
+        username,
+        firstName,
+        lastName,
+        photoUrl,
+        languageCode,
+        score: 0,
+        gamesPlayed: 0,
+        correctAnswers: 0,
+        bestStreak: 0,
+        achievements: [],
         registeredAt: new Date()
       });
-      
       await user.save();
-      logger.info(`New user registered: ${user.username} (ID: ${user._id})`);
-    } else {
-      // Обновляем данные пользователя, если что-то изменилось
-      const updates = {};
-      
-      if (telegramData.username && telegramData.username !== user.username) {
-        updates.username = telegramData.username;
-      }
-      
-      if (telegramData.first_name && telegramData.first_name !== user.firstName) {
-        updates.firstName = telegramData.first_name;
-      }
-      
-      if (telegramData.last_name && telegramData.last_name !== user.lastName) {
-        updates.lastName = telegramData.last_name;
-      }
-      
-      if (telegramData.photo_url && telegramData.photo_url !== user.photoUrl) {
-        updates.photoUrl = telegramData.photo_url;
-      }
-      
-      if (telegramData.language_code && telegramData.language_code !== user.language) {
-        updates.language = telegramData.language_code;
-      }
-      
-      if (Object.keys(updates).length > 0) {
-        user = await User.findByIdAndUpdate(user._id, updates, { new: true });
-        logger.info(`User data updated: ${user.username} (ID: ${user._id})`);
-      }
     }
-    
-    // Генерируем JWT токен для аутентификации
+
+    // Генерируем токен
     const token = generateToken(user);
-    
-    // Сохраняем токен в Redis с небольшим временем жизни для оптимизации проверок
-    await redisService.setValue(`auth:${user._id}`, token, 3600); // 1 час
-    
+
+    // Кэшируем токен
+    await redisService.setValue(`auth:${user._id}`, token, 3600);
+
     return res.status(200).json({
       success: true,
-      message: 'Авторизация успешна',
-      token,
+      message: user.isNew ? 'Пользователь создан' : 'Пользователь обновлен',
       user: {
         id: user._id,
         telegramId: user.telegramId,
@@ -84,23 +83,144 @@ exports.getOrCreateUser = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         photoUrl: user.photoUrl,
-        language: user.language,
         score: user.score,
         gamesPlayed: user.gamesPlayed,
-        correctAnswers: user.correctAnswers,
-        bestStreak: user.bestStreak,
-        achievements: user.achievements
+        token
       }
     });
-    
+
   } catch (error) {
-    logger.error(`Error in user authentication: ${error.message}`);
+    logger.error(`Error creating/updating user: ${error.message}`);
     return res.status(500).json({
       success: false,
-      message: 'Ошибка при авторизации пользователя'
+      message: 'Ошибка при создании/обновлении пользователя'
     });
   }
 };
+
+/**
+ * Получить профиль пользователя
+ * GET /api/user/profile
+ */
+exports.getProfile = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  // Пробуем получить из кэша
+  let user = await cacheService.getUserProfileCache(userId);
+  
+  if (!user) {
+    user = await User.findById(userId)
+      .select('username firstName lastName photoUrl score rank achievements')
+      .lean();
+
+    if (!user) {
+      throw new ResourceNotFoundError('Пользователь', userId);
+    }
+
+    // Кэшируем результат
+    await cacheService.cacheUserProfile(userId, user);
+  }
+
+  return res.success({
+    profile: user
+  });
+});
+
+/**
+ * Получить достижения пользователя
+ * GET /api/user/achievements
+ */
+exports.getAchievements = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { category } = req.query;
+
+  // Пробуем получить из кэша
+  let achievements = await cacheService.getUserAchievementsCache(userId);
+  
+  if (!achievements) {
+    const user = await User.findById(userId)
+      .select('achievements achievementProgress')
+      .lean();
+
+    if (!user) {
+      throw new ResourceNotFoundError('Пользователь', userId);
+    }
+
+    achievements = {
+      unlocked: user.achievements,
+      progress: user.achievementProgress
+    };
+
+    // Кэшируем результат
+    await cacheService.cacheUserAchievements(userId, achievements);
+  }
+
+  // Фильтруем по категории если указана
+  if (category) {
+    achievements.unlocked = achievements.unlocked.filter(a => a.category === category);
+    achievements.progress = Object.fromEntries(
+      Object.entries(achievements.progress).filter(([key]) => 
+        achievements.unlocked.some(a => a.id === key && a.category === category)
+      )
+    );
+  }
+
+  return res.success({
+    achievements: achievements.unlocked,
+    progress: achievements.progress
+  });
+});
+
+/**
+ * Get user achievements
+ * GET /api/user/achievements
+ */
+exports.getUserAchievements = asyncHandler(async (req, res) => {
+  const userId = req.params.userId;
+  const user = await User.findById(userId);
+
+  if (!user) {
+    throw new ResourceNotFoundError('User not found', userId);
+  }
+
+  // Try to get from cache first
+  let achievements = await cacheService.getUserAchievementsCache(userId);
+
+  if (!achievements) {
+    // Cache miss - fetch from database
+    achievements = await Achievement.find({ userId });
+    
+    // Get progress for incomplete achievements
+    const inProgressAchievements = await AchievementProgress.find({ userId });
+    
+    // Format response
+    achievements = {
+      unlocked: achievements.map(a => ({
+        id: a._id,
+        name: a.name,
+        description: a.description,
+        unlockedAt: a.unlockedAt,
+        reward: a.reward
+      })),
+      inProgress: inProgressAchievements.map(p => ({
+        id: p.achievementId,
+        name: p.name,
+        description: p.description, 
+        currentProgress: p.currentProgress,
+        targetProgress: p.targetProgress,
+        percentComplete: (p.currentProgress / p.targetProgress) * 100
+      }))
+    };
+
+    // Cache the results
+    await cacheService.cacheUserAchievements(userId, achievements);
+  }
+
+  res.json({
+    status: 'success',
+    data: achievements
+  });
+});
 
 /**
  * Получить профиль текущего пользователя
@@ -109,21 +229,14 @@ exports.getUserProfile = async (req, res) => {
   try {
     const user = req.user;
     
-    // Получаем позицию в рейтинге
-    let position = null;
+    // Получаем позицию в рейтинге и ранг
+    const [position, rank] = await Promise.all([
+      redisService.getRank('leaderboard:all-time', user._id.toString()),
+      gameLogicService.calculateRank(user.score)
+    ]);
     
-    try {
-      const allTimeKey = 'leaderboard:all-time';
-      position = await redisService.getRank(allTimeKey, user._id.toString());
-      
-      // Redis возвращает 0-based позицию, прибавляем 1 для human-readable
-      if (position !== null) {
-        position += 1;
-      }
-    } catch (redisError) {
-      logger.error(`Error getting user position: ${redisError.message}`);
-      // Не прерываем выполнение в случае ошибки Redis
-    }
+    // Redis возвращает 0-based позицию, прибавляем 1 для human-readable
+    const rankPosition = position !== null ? position + 1 : null;
     
     return res.status(200).json({
       success: true,
@@ -140,7 +253,10 @@ exports.getUserProfile = async (req, res) => {
         gamesPlayed: user.gamesPlayed,
         correctAnswers: user.correctAnswers,
         bestStreak: user.bestStreak,
-        position,
+        position: rankPosition,
+        rank: rank.currentRank,
+        nextRank: rank.nextRank,
+        rankProgress: rank.progress,
         achievements: user.achievements
       }
     });
@@ -150,30 +266,6 @@ exports.getUserProfile = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Ошибка при получении профиля пользователя'
-    });
-  }
-};
-
-/**
- * Получить достижения пользователя
- */
-exports.getUserAchievements = async (req, res) => {
-  try {
-    const user = req.user;
-    
-    const achievements = user.achievements || [];
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Достижения пользователя успешно получены',
-      achievements
-    });
-    
-  } catch (error) {
-    logger.error(`Error getting user achievements: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: 'Ошибка при получении достижений пользователя'
     });
   }
 };
@@ -653,4 +745,43 @@ exports.updateUserAvatar = async (req, res) => {
       message: 'Ошибка при обновлении аватара'
     });
   }
-}; 
+};
+
+/**
+ * Обновить профиль пользователя
+ * PUT /api/user/profile
+ */
+exports.updateProfile = asyncHandler(async (req, res) => {
+  const { userId } = req.user;
+  const { username, firstName, lastName, photoUrl } = req.body;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ResourceNotFoundError('Пользователь', userId);
+  }
+
+  // Проверяем уникальность username
+  if (username && username !== user.username) {
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      throw new ValidationError('Такой username уже занят');
+    }
+  }
+
+  // Обновляем поля
+  Object.assign(user, {
+    ...(username && { username }),
+    ...(firstName && { firstName }),
+    ...(lastName && { lastName }),
+    ...(photoUrl && { photoUrl })
+  });
+
+  await user.save();
+  
+  // Инвалидируем кэш
+  await cacheService.invalidateUserCaches(userId);
+
+  return res.success({
+    profile: user
+  });
+}); 

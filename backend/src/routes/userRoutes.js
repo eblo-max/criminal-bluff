@@ -4,23 +4,23 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const authMiddleware = require('../middlewares/authMiddleware');
+const { authMiddleware } = require('../middlewares/authMiddleware');
 
 /**
  * @route   POST /api/user/create
  * @desc    Create or update a user profile from Telegram data
  * @access  Public
  */
-router.post('/create', userController.getOrCreateUser);
+router.post('/create', userController.createUser);
 
 /**
  * @route   POST /api/user/telegram-auth
- * @desc    Авторизация через Telegram WebApp
+ * @desc    Authenticate user via Telegram WebApp
  * @access  Public
  */
 router.post('/telegram-auth', userController.telegramAuth);
 
-// Apply auth middleware to all protected routes
+// Защищенные маршруты
 router.use(authMiddleware);
 
 /**
@@ -57,5 +57,26 @@ router.get('/webapp-config', userController.getWebAppConfig);
  * @access  Private
  */
 router.put('/avatar', userController.updateUserAvatar);
+
+/**
+ * @route   GET /api/user/:userId
+ * @desc    Get user by ID
+ * @access  Private
+ */
+router.get('/:userId', userController.getUserById);
+
+/**
+ * @route   PUT /api/user/profile
+ * @desc    Update user profile
+ * @access  Private
+ */
+router.put('/profile', userController.updateProfile);
+
+/**
+ * @route   GET /api/user/:userId/achievements
+ * @desc    Get user achievements
+ * @access  Private
+ */
+router.get('/:userId/achievements', userController.getUserAchievements);
 
 module.exports = router; 

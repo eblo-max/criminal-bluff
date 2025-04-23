@@ -1,303 +1,196 @@
 /**
  * Redis service for caching and real-time data
  */
-const { createClient } = require('redis');
+const Redis = require('ioredis');
+const config = require('../config/redis');
 const logger = require('../utils/logger');
 
-let redisClient;
+const redis = new Redis(config);
 
 /**
- * Initialize Redis client
+ * Получить значение по ключу
  */
-const initRedis = async () => {
+const get = async (key) => {
   try {
-    redisClient = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379'
-    });
-
-    // Error handling
-    redisClient.on('error', (err) => {
-      logger.error(`Redis error: ${err}`);
-    });
-
-    // Connection successful
-    redisClient.on('connect', () => {
-      logger.info('Redis connected');
-    });
-
-    // Connect to Redis
-    await redisClient.connect();
-    return redisClient;
-  } catch (error) {
-    logger.error(`Redis connection error: ${error.message}`);
-    throw error;
+    return await redis.get(key);
+  } catch (err) {
+    logger.error(`Redis get error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Set a value in Redis with optional expiration
- * @param {string} key - Redis key
- * @param {any} value - Value to store (will be JSON stringified)
- * @param {number} [expireSeconds=3600] - Expiration time in seconds (default: 1 hour)
- * @returns {Promise<void>}
+ * Установить значение по ключу
  */
-const setValue = async (key, value, expireSeconds = 3600) => {
+const set = async (key, value, ttl = null) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
+    if (ttl) {
+      return await redis.set(key, value, 'EX', ttl);
     }
-    
-    const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    await redisClient.set(key, stringValue);
-    await redisClient.expire(key, expireSeconds);
-  } catch (error) {
-    logger.error(`Redis setValue error: ${error.message}`);
-    throw error;
+    return await redis.set(key, value);
+  } catch (err) {
+    logger.error(`Redis set error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get a value from Redis
- * @param {string} key - Redis key
- * @returns {Promise<any>} - Retrieved value (JSON parsed if possible)
+ * Удалить ключ
  */
-const getValue = async (key) => {
+const del = async (key) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    const value = await redisClient.get(key);
-    
-    if (!value) return null;
-    
-    // Try to parse as JSON, return original value if not valid JSON
-    try {
-      return JSON.parse(value);
-    } catch (e) {
-      return value;
-    }
-  } catch (error) {
-    logger.error(`Redis getValue error: ${error.message}`);
-    throw error;
+    return await redis.del(key);
+  } catch (err) {
+    logger.error(`Redis del error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Delete a key from Redis
- * @param {string} key - Redis key
- * @returns {Promise<boolean>} - True if key was deleted, false otherwise
+ * Проверить существование ключа
  */
-const deleteKey = async (key) => {
+const exists = async (key) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    const result = await redisClient.del(key);
-    return result > 0;
-  } catch (error) {
-    logger.error(`Redis deleteKey error: ${error.message}`);
-    throw error;
+    return await redis.exists(key);
+  } catch (err) {
+    logger.error(`Redis exists error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Add value to a sorted set
- * @param {string} key - Sorted set key
- * @param {number} score - Score for ordering
- * @param {string} member - Member value
- * @returns {Promise<void>}
+ * Установить время жизни ключа
+ */
+const expire = async (key, seconds) => {
+  try {
+    return await redis.expire(key, seconds);
+  } catch (err) {
+    logger.error(`Redis expire error: ${err.message}`);
+    throw err;
+  }
+};
+
+/**
+ * Добавить элемент в сортированное множество
  */
 const addToSortedSet = async (key, score, member) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    await redisClient.zAdd(key, [{ score, value: member }]);
-  } catch (error) {
-    logger.error(`Redis addToSortedSet error: ${error.message}`);
-    throw error;
+    return await redis.zadd(key, score, member);
+  } catch (err) {
+    logger.error(`Redis zadd error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get top members from a sorted set
- * @param {string} key - Sorted set key
- * @param {number} start - Start index
- * @param {number} end - End index
- * @returns {Promise<Array>} - Array of [member, score] pairs
+ * Получить ранг элемента в сортированном множестве
  */
-const getTopFromSortedSet = async (key, start = 0, end = 9) => {
+const getRank = async (key, member) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    // Get top scores (highest first)
-    const result = await redisClient.zRangeWithScores(key, start, end, { REV: true });
-    return result.map(item => ({ member: item.value, score: item.score }));
-  } catch (error) {
-    logger.error(`Redis getTopFromSortedSet error: ${error.message}`);
-    throw error;
+    return await redis.zrevrank(key, member);
+  } catch (err) {
+    logger.error(`Redis zrevrank error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get rank of a member in a sorted set
- * @param {string} key - Sorted set key
- * @param {string} member - Member value
- * @returns {Promise<number|null>} - Rank of the member (0-based) or null if not found
+ * Получить счет элемента в сортированном множестве
  */
-const getRankInSortedSet = async (key, member) => {
+const getScore = async (key, member) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    // Get rank (reversed to get highest first)
-    const rank = await redisClient.zRevRank(key, member);
-    return rank;
-  } catch (error) {
-    logger.error(`Redis getRankInSortedSet error: ${error.message}`);
-    throw error;
+    return await redis.zscore(key, member);
+  } catch (err) {
+    logger.error(`Redis zscore error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get a range of members from a leaderboard (sorted set)
- * @param {string} key - Leaderboard key
- * @param {number} start - Start index
- * @param {number} end - End index
- * @returns {Promise<Array>} - Array of {id, score} objects
+ * Получить диапазон элементов из сортированного множества
  */
-const getLeaderboardRange = async (key, start = 0, end = 9) => {
+const getRange = async (key, start, stop, withScores = true) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
+    if (withScores) {
+      return await redis.zrevrange(key, start, stop, 'WITHSCORES');
     }
-    
-    // Get range of scores (highest first)
-    const result = await redisClient.zRangeWithScores(key, start, end, { REV: true });
-    return result.map(item => ({ id: item.value, score: item.score }));
-  } catch (error) {
-    logger.error(`Redis getLeaderboardRange error: ${error.message}`);
-    throw error;
+    return await redis.zrevrange(key, start, stop);
+  } catch (err) {
+    logger.error(`Redis zrevrange error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get the size of a leaderboard (sorted set)
- * @param {string} key - Leaderboard key
- * @returns {Promise<number>} - Number of members in the leaderboard
+ * Получить количество элементов в сортированном множестве
  */
-const getLeaderboardSize = async (key) => {
+const getCount = async (key) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    return await redisClient.zCard(key);
-  } catch (error) {
-    logger.error(`Redis getLeaderboardSize error: ${error.message}`);
-    throw error;
+    return await redis.zcard(key);
+  } catch (err) {
+    logger.error(`Redis zcard error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get a user's rank in a leaderboard
- * @param {string} key - Leaderboard key
- * @param {string} userId - User ID
- * @returns {Promise<number|null>} - User's rank (0-based) or null if not found
+ * Получить ранг пользователя в рейтинге
+ * @param {string} userId - ID пользователя
+ * @param {string} leaderboardKey - Ключ рейтинга
+ * @returns {Promise<number|null>} - Ранг пользователя или null
  */
-const getRank = async (key, userId) => {
+const getUserRank = async (userId, leaderboardKey) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    // Get rank (reversed to get highest first, with highest rank at 0)
-    return await redisClient.zRevRank(key, userId);
-  } catch (error) {
-    logger.error(`Redis getRank error: ${error.message}`);
-    throw error;
+    const rank = await redis.zrevrank(leaderboardKey, userId);
+    return rank !== null ? rank + 1 : null; // Преобразуем в 1-based индекс
+  } catch (err) {
+    logger.error(`Redis getUserRank error: ${err.message}`);
+    throw err;
   }
 };
 
 /**
- * Get a user's score in a leaderboard
- * @param {string} key - Leaderboard key
- * @param {string} userId - User ID
- * @returns {Promise<number|null>} - User's score or null if not found
+ * Удалить ключ
+ * @param {string} key - Ключ для удаления
+ * @returns {Promise<boolean>} - Результат операции
  */
-const getScore = async (key, userId) => {
+const deleteKey = async (key) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    return await redisClient.zScore(key, userId);
-  } catch (error) {
-    logger.error(`Redis getScore error: ${error.message}`);
-    throw error;
+    await redis.del(key);
+    return true;
+  } catch (err) {
+    logger.error(`Redis deleteKey error: ${err.message}`);
+    return false;
   }
 };
 
 /**
- * Get all keys matching a pattern
- * @param {string} pattern - Redis key pattern with wildcards
- * @returns {Promise<Array<string>>} - Array of matching keys
+ * Получить ключи по шаблону
+ * @param {string} pattern - Шаблон для поиска ключей
+ * @returns {Promise<string[]>} - Массив найденных ключей
  */
 const getKeysByPattern = async (pattern) => {
   try {
-    if (!redisClient || !redisClient.isOpen) {
-      await initRedis();
-    }
-    
-    // Use SCAN to get keys matching pattern
-    const keys = [];
-    let cursor = 0;
-    
-    do {
-      const result = await redisClient.scan(cursor, {
-        MATCH: pattern,
-        COUNT: 100
-      });
-      
-      cursor = result.cursor;
-      keys.push(...result.keys);
-    } while (cursor !== 0);
-    
-    return keys;
-  } catch (error) {
-    logger.error(`Redis getKeysByPattern error: ${error.message}`);
-    throw error;
-  }
-};
-
-/**
- * Close Redis connection
- */
-const closeRedis = async () => {
-  if (redisClient && redisClient.isOpen) {
-    await redisClient.quit();
-    logger.info('Redis connection closed');
+    return await redis.keys(pattern);
+  } catch (err) {
+    logger.error(`Redis getKeysByPattern error: ${err.message}`);
+    return [];
   }
 };
 
 module.exports = {
-  initRedis,
-  setValue,
-  getValue,
-  deleteKey,
+  get,
+  set,
+  del,
+  exists,
+  expire,
   addToSortedSet,
-  getTopFromSortedSet,
-  getRankInSortedSet,
-  getLeaderboardRange,
-  getLeaderboardSize,
   getRank,
   getScore,
+  getRange,
+  getCount,
+  getUserRank,
+  deleteKey,
   getKeysByPattern,
-  closeRedis
+  redis
 }; 
